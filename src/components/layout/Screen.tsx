@@ -1,10 +1,10 @@
 import { PropsWithChildren } from "react";
 import {
-  SafeAreaView,
   StyleSheet,
   View,
   ViewStyle,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, spacing } from "@/theme";
 
@@ -36,11 +36,12 @@ export function Screen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.primary,
   },
 
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
 
   padded: {
