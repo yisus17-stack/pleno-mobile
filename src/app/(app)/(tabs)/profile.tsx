@@ -1,18 +1,22 @@
 import { useState } from "react";
-import { Alert, Image, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
+import GoogleClassroomIcon from "@/assets/icons/google-classroom.svg";
+import GoogleIcon from "@/assets/icons/google.png";
 import { Screen } from "@/components/layout";
-import { AppText, Button, Card } from "@/components/ui";
-import { colors, spacing } from "@/theme";
+import { AppText } from "@/components/ui";
+import { colors, radius, spacing } from "@/theme";
+import { useAuth } from "@/features/auth/AuthProvider";
 import { configureGoogleSignIn } from "@/features/auth/google";
 
 configureGoogleSignIn();
 
 export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const googleUser = GoogleSignin.getCurrentUser()?.user;
+  const { clearAuthenticatedUser, user: authenticatedUser } = useAuth();
+  const googleUser = authenticatedUser || GoogleSignin.getCurrentUser()?.user;
   const name = googleUser?.name || googleUser?.email.split("@")[0] || "Usuario";
   const initial = name.charAt(0).toUpperCase();
 
@@ -21,6 +25,7 @@ export default function ProfileScreen() {
 
     try {
       await GoogleSignin.signOut();
+      clearAuthenticatedUser();
       router.replace("/login");
     } catch (error) {
       Alert.alert(
@@ -41,47 +46,73 @@ export default function ProfileScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <AppText variant="h1">Tu perfil</AppText>
-        <AppText color={colors.textSecondary} style={styles.subtitle}>
-          Tu cuenta y el acceso a PLENO.
-        </AppText>
+        <AppText variant="h1">Configuración</AppText>
 
-        <Card style={styles.profileCard}>
-          {googleUser?.photo ? (
-            <Image source={{ uri: googleUser.photo }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <AppText variant="h2" color={colors.white} style={styles.initial}>
-                {initial}
-              </AppText>
-            </View>
-          )}
-          <View style={styles.profileDetails}>
-            <AppText variant="h3" numberOfLines={1}>{name}</AppText>
-            <AppText color={colors.textSecondary} numberOfLines={1}>
+        <View style={styles.accountRow}>
+          <View style={styles.avatarArea}>
+            {googleUser?.photo ? (
+              <Image source={{ uri: googleUser.photo }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <AppText variant="h2" color={colors.white} style={styles.initial}>
+                  {initial}
+                </AppText>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.accountDetails}>
+            <AppText variant="h2" numberOfLines={1}>{name}</AppText>
+            <AppText color={colors.textSecondary} style={styles.email} numberOfLines={1}>
               {googleUser?.email || "Cuenta de Google"}
             </AppText>
+            <View style={styles.googleStatus}>
+              <Image source={GoogleIcon} style={styles.googleIcon} resizeMode="contain" />
+              <AppText variant="caption" color={colors.text} style={styles.statusLabel}>
+                Conectado con Google
+              </AppText>
+            </View>
           </View>
-        </Card>
+        </View>
 
-        <Card style={styles.infoCard}>
-          <View style={styles.statusDot} />
-          <View style={styles.infoText}>
-            <AppText variant="h3">Google conectado</AppText>
-            <AppText color={colors.textSecondary} style={styles.description}>
-              Tu cuenta está lista para organizar tus tareas y vincular Classroom cuando quieras.
+        <AppText variant="caption" color={colors.textMuted} style={styles.sectionTitle}>
+          INTEGRACIONES
+        </AppText>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Vincular Google Classroom"
+          onPress={() => router.push("/classroom")}
+          style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}
+        >
+          <View style={styles.classroomIcon}>
+            <GoogleClassroomIcon width={24} height={21} />
+          </View>
+          <View style={styles.settingDetails}>
+            <AppText variant="h4">Google Classroom</AppText>
+            <AppText color={colors.textSecondary} style={styles.settingDescription}>
+              Importa cursos y tareas cuando quieras.
             </AppText>
           </View>
-        </Card>
+          <View style={styles.optionalBadge}>
+            <AppText variant="caption" style={styles.optionalText}>Opcional</AppText>
+          </View>
+          <AppText color={colors.textMuted} style={styles.chevron}>›</AppText>
+        </Pressable>
 
         <View style={styles.signOutContainer}>
-          <Button
-            title="Cerrar sesión"
-            variant="ghost"
-            loading={isSigningOut}
+          <Pressable
+            accessibilityRole="button"
+            disabled={isSigningOut}
             onPress={confirmSignOut}
-            style={styles.signOutButton}
-          />
+            style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed, isSigningOut && styles.disabled]}
+          >
+            <AppText color={colors.danger} style={styles.signOutIcon}>↪</AppText>
+            <AppText color={colors.danger} style={styles.signOutLabel}>
+              {isSigningOut ? "Cerrando sesión..." : "Cerrar sesión"}
+            </AppText>
+            <AppText color={colors.danger} style={styles.chevron}>›</AppText>
+          </Pressable>
         </View>
       </ScrollView>
     </Screen>
@@ -90,34 +121,78 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, paddingTop: spacing.xxl, paddingBottom: spacing.xxl },
-  subtitle: { marginTop: spacing.sm },
-  profileCard: {
-    marginTop: spacing.xl,
-    alignItems: "center",
-    flexDirection: "row",
-  },
-  avatar: { width: 68, height: 68, borderRadius: 34 },
+  accountRow: { marginTop: spacing.xl, alignItems: "center", flexDirection: "row" },
+  avatarArea: { width: 84, height: 84, alignItems: "center", justifyContent: "center" },
+  avatar: { width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: colors.border },
   avatarFallback: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 3,
+    borderColor: colors.border,
     backgroundColor: colors.primary,
   },
   initial: { fontWeight: "700" },
-  profileDetails: { flex: 1, marginLeft: spacing.md, gap: spacing.xs },
-  infoCard: { marginTop: spacing.lg, flexDirection: "row" },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 6,
-    marginRight: spacing.md,
-    backgroundColor: colors.success,
+  accountDetails: { flex: 1, marginLeft: spacing.md, gap: spacing.xs },
+  email: { opacity: 0.86 },
+  googleStatus: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  infoText: { flex: 1 },
-  description: { marginTop: spacing.xs, lineHeight: 21 },
+  googleIcon: { width: 18, height: 18 },
+  statusLabel: { fontWeight: "700" },
+  sectionTitle: { marginTop: spacing.xxl, marginBottom: spacing.sm, fontWeight: "700", letterSpacing: 0.8 },
+  settingRow: {
+    minHeight: 88,
+    padding: spacing.md,
+    alignItems: "center",
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
+    backgroundColor: colors.white,
+  },
+  classroomIcon: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingDetails: { flex: 1, marginLeft: spacing.md },
+  settingDescription: { marginTop: 2, fontSize: 13 },
+  optionalBadge: {
+    marginLeft: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.lg,
+    backgroundColor: "#FFF4C2",
+  },
+  optionalText: { color: "#8A6500", fontWeight: "700" },
+  chevron: { marginLeft: spacing.sm, fontSize: 26, lineHeight: 28 },
   signOutContainer: { flex: 1, justifyContent: "flex-end", paddingTop: spacing.xxxl },
-  signOutButton: { borderWidth: 1, borderColor: colors.border },
+  signOutRow: {
+    minHeight: 56,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: radius.lg,
+    backgroundColor: "#FFF7F7",
+  },
+  signOutIcon: { marginRight: spacing.sm, fontSize: 22, fontWeight: "700" },
+  signOutLabel: { flex: 1, fontWeight: "700" },
+  pressed: { opacity: 0.72 },
+  disabled: { opacity: 0.55 },
 });

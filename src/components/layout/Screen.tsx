@@ -19,7 +19,7 @@ export function Screen({
   padded = true,
 }: ScreenProps) {
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <View
         style={[
           styles.container,

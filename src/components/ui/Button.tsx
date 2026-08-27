@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   ViewStyle,
 } from "react-native";
+import { ReactNode } from "react";
 
 import { AppText } from "./AppText";
 import { colors, radius, spacing } from "@/theme";
@@ -17,6 +18,7 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  icon?: ReactNode;
 }
 
 export function Button({
@@ -26,6 +28,7 @@ export function Button({
   loading = false,
   disabled = false,
   style,
+  icon,
 }: ButtonProps) {
   const isDisabled = disabled || loading;
 
@@ -46,12 +49,15 @@ export function Button({
           color={variant === "primary" ? colors.white : colors.text}
         />
       ) : (
-        <AppText
-          style={styles.label}
-          color={variant === "primary" ? colors.white : colors.text}
-        >
-          {title}
-        </AppText>
+        <>
+          {icon}
+          <AppText
+            style={styles.label}
+            color={variant === "primary" ? colors.white : colors.text}
+          >
+            {title}
+          </AppText>
+        </>
       )}
     </Pressable>
   );
@@ -63,6 +69,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     justifyContent: "center",
     alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
     borderRadius: radius.lg,
   },
 

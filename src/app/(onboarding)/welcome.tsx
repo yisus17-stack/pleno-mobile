@@ -11,10 +11,10 @@ export default function WelcomeScreen() {
       <View style={styles.content}>
         <AppText variant="display">Bienvenido a PLENO</AppText>
         <AppText color={colors.textSecondary} style={styles.description}>
-          Organizaremos tus pendientes para que sepas que hacer primero.
+          Prepararemos tu espacio una sola vez para que sepas qué hacer primero.
         </AppText>
       </View>
-      <Button title="Configurar mi espacio" onPress={() => router.push("/classroom")} />
+      <Button title="Continuar" onPress={() => router.push("/classroom")} />
     </Screen>
   );
 }

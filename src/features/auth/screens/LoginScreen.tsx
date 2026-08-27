@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Alert, Image, ScrollView, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
 import { useMutation } from "convex/react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
@@ -12,6 +11,7 @@ import { GoogleSignInButton } from "@/features/auth/components/GoogleSignInButto
 import { colors, spacing } from "@/theme";
 import { api } from "@convex/_generated/api";
 import { configureGoogleSignIn } from "@/features/auth/google";
+import { useAuth } from "@/features/auth/AuthProvider";
 
 configureGoogleSignIn();
 
@@ -20,6 +20,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const storeUser = useMutation(api.users.storeUser);
+  const { setAuthenticatedUser } = useAuth();
 
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
@@ -40,7 +41,7 @@ export function LoginScreen() {
         picture: user.photo || undefined,
       });
 
-      router.replace("/welcome");
+      setAuthenticatedUser(user);
     } catch (error) {
       Alert.alert(
         "No se pudo iniciar sesion",

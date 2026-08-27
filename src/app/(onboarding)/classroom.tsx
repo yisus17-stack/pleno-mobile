@@ -1,22 +1,73 @@
 import { router } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import { useAction } from "convex/react";
 
 import { Screen } from "@/components/layout";
 import { AppText, Button } from "@/components/ui";
 import { colors, spacing } from "@/theme";
+import { useAuth } from "@/features/auth/AuthProvider";
+import { classroomScopes } from "@/features/auth/google";
+import { markOnboardingComplete } from "@/features/auth/onboarding";
+import { api } from "@convex/_generated/api";
 
 export default function ClassroomScreen() {
+  const [isLinking, setIsLinking] = useState(false);
+  const { user } = useAuth();
+  const syncClassroomTasks = useAction(api.classroom.syncClassroomTasks);
+
+  const continueToApp = async () => {
+    if (user) await markOnboardingComplete(user.id);
+    router.replace("/(app)/(tabs)");
+  };
+
+  const linkClassroom = async () => {
+    if (!user) {
+      Alert.alert("Sesión no disponible", "Inicia sesión de nuevo para vincular Classroom.");
+      return;
+    }
+
+    setIsLinking(true);
+
+    try {
+      const authorization = await GoogleSignin.addScopes({ scopes: classroomScopes });
+      if (!authorization || authorization.type === "cancelled") return;
+
+      const { accessToken } = await GoogleSignin.getTokens();
+      const result = await syncClassroomTasks({
+        userId: user.id,
+        accessToken,
+      });
+
+      Alert.alert(
+        "Classroom vinculado",
+        result.totalSynced === 1
+          ? "Importamos 1 tarea."
+          : `Importamos ${result.totalSynced} tareas.`
+      );
+      await continueToApp();
+    } catch (error) {
+      Alert.alert(
+        "No se pudo vincular Classroom",
+        error instanceof Error ? error.message : "Inténtalo de nuevo."
+      );
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.content}>
-        <AppText variant="h1">Conectamos Google Classroom?</AppText>
+        <AppText variant="h1">¿Conectamos Google Classroom?</AppText>
         <AppText color={colors.textSecondary} style={styles.description}>
-          Es opcional. Tambien podras crear tareas manualmente.
+          Es opcional. Al vincularlo podremos importar tus cursos y tareas automáticamente.
         </AppText>
       </View>
       <View style={styles.actions}>
-        <Button title="Conectar mas tarde" variant="secondary" onPress={() => router.replace("/(app)/(tabs)")} />
-        <Button title="Continuar sin Classroom" onPress={() => router.replace("/(app)/(tabs)")} />
+        <Button title="Vincular Classroom" loading={isLinking} onPress={linkClassroom} />
+        <Button title="Ahora no" variant="ghost" disabled={isLinking} onPress={() => void continueToApp()} />
       </View>
     </Screen>
   );

@@ -1,6 +1,6 @@
-import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet } from "react-native";
 
-import GoogleIcon from "@/assets/icons/google.svg";
+import GoogleIcon from "@/assets/icons/google.png";
 import { AppText } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 
@@ -27,7 +27,7 @@ export function GoogleSignInButton({
         <ActivityIndicator color={colors.primary} />
       ) : (
         <>
-          <GoogleIcon width={22} height={22} />
+          <Image source={GoogleIcon} style={styles.icon} resizeMode="contain" />
           <AppText style={styles.text}>Continuar con Google</AppText>
         </>
       )}
@@ -51,6 +51,10 @@ const styles = StyleSheet.create({
 
   text: {
     fontWeight: "600",
+  },
+  icon: {
+    width: 22,
+    height: 22,
   },
 
   pressed: {

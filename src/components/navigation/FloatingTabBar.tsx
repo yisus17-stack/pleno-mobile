@@ -14,7 +14,7 @@ const tabDetails = {
   index: { label: "Inicio", icon: "home" },
   tasks: { label: "Tareas", icon: "tasks" },
   board: { label: "Tablero", icon: "board" },
-  profile: { label: "Perfil", icon: "profile" },
+  profile: { label: "Configuración", icon: "profile" },
 } as const;
 
 type TabIconName = (typeof tabDetails)[keyof typeof tabDetails]["icon"];
@@ -133,10 +133,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: FloatingTabBa
 
 const styles = StyleSheet.create({
   wrapper: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    backgroundColor: colors.background,
+    backgroundColor: colors.white,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   bar: {
     minHeight: 76,
@@ -145,13 +144,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
-    borderRadius: 30,
     backgroundColor: colors.white,
     shadowColor: "#1A365D",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tab: {
     width: "100%",
