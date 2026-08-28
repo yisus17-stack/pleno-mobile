@@ -11,15 +11,17 @@ import { colors, spacing } from "@/theme";
 interface ScreenProps extends PropsWithChildren {
   style?: ViewStyle;
   padded?: boolean;
+  safeAreaColor?: string;
 }
 
 export function Screen({
   children,
   style,
   padded = true,
+  safeAreaColor = colors.primary,
 }: ScreenProps) {
   return (
-    <SafeAreaView edges={["top"]} style={styles.safeArea}>
+    <SafeAreaView edges={["top"]} style={[styles.safeArea, { backgroundColor: safeAreaColor }]}>
       <View
         style={[
           styles.container,

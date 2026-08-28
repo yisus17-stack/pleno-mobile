@@ -1,23 +1,58 @@
 import { router } from "expo-router";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { useQuery } from "convex/react";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Svg, { Path, Rect } from "react-native-svg";
 
 import PlenoLogoBlanco from "@/assets/brand/logo_pleno_blanco.svg";
 import BannerImage from "@/assets/images/banner_image.png";
 import InicioImage from "@/assets/images/inicio_image.png";
+import { api } from "@convex/_generated/api";
 import { Screen } from "@/components/layout";
 import { AppText, Button, Card } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { colors, radius, spacing } from "@/theme";
 
-const taskSummary = [
-  { label: "Pendientes", value: "0", color: colors.primary },
-  { label: "En progreso", value: "0", color: colors.warning },
-  { label: "Completadas", value: "0", color: colors.success },
-];
+function getDueLabel(dueDate: number) {
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
+  const startOfDayAfterTomorrow = startOfTomorrow + 24 * 60 * 60 * 1000;
+
+  if (dueDate >= startOfToday && dueDate < startOfTomorrow) return "Hoy";
+  if (dueDate >= startOfTomorrow && dueDate < startOfDayAfterTomorrow) return "Mañana";
+
+  return new Date(dueDate).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+function UpcomingTaskIcon() {
+  return (
+    <View style={styles.upcomingTaskIcon}>
+      <Svg width={25} height={25} viewBox="0 0 24 24" fill="none">
+        <Rect x={5} y={5} width={14} height={16} rx={2} stroke={colors.text} strokeWidth={1.9} />
+        <Rect x={9} y={2.5} width={6} height={4.5} rx={1.5} fill={colors.text} />
+        <Path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" stroke={colors.text} strokeWidth={1.9} strokeLinecap="round" />
+      </Svg>
+    </View>
+  );
+}
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const firstName = user?.givenName || user?.name?.split(" ")[0] || "";
+  const tasks = useQuery(api.tasks.getTasksByUser, user ? { userId: user.id } : "skip");
+  const allTasks = tasks ?? [];
+  const pendingTasks = allTasks.filter((task) => task.status === "todo");
+  const inProgressTasks = allTasks.filter((task) => task.status === "in_progress");
+  const completedTasks = allTasks.filter((task) => task.status === "completed");
+  const upcomingTasks = allTasks
+    .filter((task) => task.status === "todo" && task.dueDate && task.dueDate >= Date.now())
+    .sort((first, second) => (first.dueDate ?? 0) - (second.dueDate ?? 0))
+    .slice(0, 3);
+  const taskSummary = [
+    { label: "Pendientes", value: pendingTasks.length, color: colors.primary },
+    { label: "En progreso", value: inProgressTasks.length, color: colors.warning },
+    { label: "Completadas", value: completedTasks.length, color: colors.success },
+  ];
 
   return (
     <Screen padded={false}>
@@ -109,19 +144,53 @@ export default function HomeScreen() {
 
           <View style={styles.upcomingSection}>
             <AppText variant="h3">Próximas</AppText>
-            <Card style={styles.upcomingCard}>
-              <View style={styles.emptyCalendar}>
-                <AppText color={colors.primary} style={styles.emptyCalendarNumber}>
-                  0
-                </AppText>
-              </View>
-              <View style={styles.upcomingCopy}>
-                <AppText style={styles.upcomingTitle}>Sin próximas entregas</AppText>
-                <AppText color={colors.textSecondary} variant="bodySmall" style={styles.upcomingDescription}>
-                  Aquí aparecerán tus tareas con fecha límite.
-                </AppText>
-              </View>
-            </Card>
+            {upcomingTasks.length > 0 ? (
+              <Card style={styles.upcomingList}>
+                {upcomingTasks.map((task, index) => (
+                  <Pressable
+                    key={task._id}
+                    accessibilityLabel={`Ver tarea ${task.title}`}
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: "/tasks", params: { taskId: task._id } })}
+                    style={({ pressed }) => [
+                      styles.upcomingTask,
+                      index > 0 && styles.upcomingTaskDivider,
+                      pressed && styles.upcomingTaskPressed,
+                    ]}
+                  >
+                    <UpcomingTaskIcon />
+                    <View style={styles.upcomingTaskCopy}>
+                      <AppText style={styles.upcomingTitle} numberOfLines={1}>
+                        {task.title}
+                      </AppText>
+                      <AppText color={colors.textSecondary} variant="bodySmall" style={styles.upcomingDescription}>
+                        {task.courseName || "General"}
+                      </AppText>
+                    </View>
+                    <AppText color={colors.primary} variant="bodySmall" style={styles.upcomingDue}>
+                      {task.dueDate ? getDueLabel(task.dueDate) : "Sin fecha"}
+                    </AppText>
+                    <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
+                      <Path d="m9 6 6 6-6 6" stroke={colors.textSecondary} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                    </Svg>
+                  </Pressable>
+                ))}
+              </Card>
+            ) : (
+              <Card style={styles.upcomingCard}>
+                <View style={styles.emptyCalendar}>
+                  <AppText color={colors.primary} style={styles.emptyCalendarNumber}>
+                    0
+                  </AppText>
+                </View>
+                <View style={styles.upcomingCopy}>
+                  <AppText style={styles.upcomingTitle}>Sin próximas entregas</AppText>
+                  <AppText color={colors.textSecondary} variant="bodySmall" style={styles.upcomingDescription}>
+                    Aquí aparecerán tus tareas con fecha límite.
+                  </AppText>
+                </View>
+              </Card>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -249,6 +318,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     padding: spacing.lg,
   },
+  upcomingList: { backgroundColor: colors.white, borderRadius: radius.lg, marginTop: spacing.md, paddingVertical: spacing.xs },
+  upcomingTask: { alignItems: "center", flexDirection: "row", minHeight: 78, paddingHorizontal: spacing.lg },
+  upcomingTaskDivider: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+  upcomingTaskPressed: { opacity: 0.68 },
+  upcomingTaskIcon: {
+    alignItems: "center",
+    backgroundColor: "#E7E7E7",
+    borderRadius: radius.full,
+    height: 44,
+    justifyContent: "center",
+    marginLeft: -spacing.sm,
+    marginRight: spacing.md,
+    width: 44,
+  },
+  upcomingTaskCopy: { flex: 1 },
   emptyCalendar: {
     alignItems: "center",
     backgroundColor: colors.surfaceSecondary,
@@ -261,4 +345,5 @@ const styles = StyleSheet.create({
   upcomingCopy: { flex: 1, marginLeft: spacing.md },
   upcomingTitle: { fontWeight: "600" },
   upcomingDescription: { lineHeight: 19, marginTop: 2 },
+  upcomingDue: { fontWeight: "600", marginLeft: spacing.sm },
 });

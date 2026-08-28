@@ -1,117 +1,124 @@
 import { useState } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import Svg, { Path } from "react-native-svg";
 
 import GoogleClassroomIcon from "@/assets/icons/google-classroom.svg";
 import GoogleIcon from "@/assets/icons/google.png";
+import ProfileImage from "@/assets/images/perfil_image.png";
 import { Screen } from "@/components/layout";
 import { AppText } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { configureGoogleSignIn } from "@/features/auth/google";
+import { classroomScopes, configureGoogleSignIn } from "@/features/auth/google";
+import { syncClassroomTasks } from "@/features/classroom/api";
 
 configureGoogleSignIn();
 
+function LinkIcon() {
+  return <Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M10.2 13.8a4.5 4.5 0 0 0 6.36.04l2.1-2.1a4.5 4.5 0 0 0-6.36-6.36l-1.2 1.2" stroke={colors.white} strokeWidth={2.2} strokeLinecap="round" /><Path d="M13.8 10.2a4.5 4.5 0 0 0-6.36-.04l-2.1 2.1a4.5 4.5 0 0 0 6.36 6.36l1.2-1.2" stroke={colors.white} strokeWidth={2.2} strokeLinecap="round" /></Svg>;
+}
+
+function CheckIcon() {
+  return <Svg width={21} height={21} viewBox="0 0 24 24" fill="none"><Path d="m5 12.5 4.25 4.25L19.5 6.5" stroke={colors.success} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+
+function SignOutIcon() {
+  return <Svg width={29} height={29} viewBox="0 0 24 24" fill="none"><Path d="M10 5H6.75A1.75 1.75 0 0 0 5 6.75v10.5C5 18.22 5.78 19 6.75 19H10" stroke={colors.danger} strokeWidth={1.9} strokeLinecap="round" /><Path d="M13 8l4 4-4 4M17 12H9" stroke={colors.danger} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+
+function ArrowIcon() {
+  return <Svg width={22} height={22} viewBox="0 0 24 24" fill="none"><Path d="m9 6 6 6-6 6" stroke={colors.danger} strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+
 export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isLinkingClassroom, setIsLinkingClassroom] = useState(false);
+  const [isClassroomLinked, setIsClassroomLinked] = useState(false);
   const { clearAuthenticatedUser, user: authenticatedUser } = useAuth();
   const googleUser = authenticatedUser || GoogleSignin.getCurrentUser()?.user;
   const name = googleUser?.name || googleUser?.email.split("@")[0] || "Usuario";
   const initial = name.charAt(0).toUpperCase();
 
+  const linkClassroom = async () => {
+    if (!authenticatedUser) {
+      Alert.alert("Sesión no disponible", "Inicia sesión de nuevo para vincular Classroom.");
+      return;
+    }
+    setIsLinkingClassroom(true);
+    try {
+      const authorization = await GoogleSignin.addScopes({ scopes: classroomScopes });
+      if (!authorization || authorization.type === "cancelled") return;
+      const { accessToken } = await GoogleSignin.getTokens();
+      const result = await syncClassroomTasks(accessToken);
+      setIsClassroomLinked(true);
+      Alert.alert("Classroom vinculado", result.totalSynced === 1 ? "Importamos 1 tarea." : typeof result.totalSynced === "number" ? `Importamos ${result.totalSynced} tareas.` : "Tus tareas se sincronizaron correctamente.");
+    } catch (error) {
+      Alert.alert("No se pudo vincular Classroom", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+    } finally {
+      setIsLinkingClassroom(false);
+    }
+  };
+
   const signOut = async () => {
     setIsSigningOut(true);
-
     try {
       await GoogleSignin.signOut();
       clearAuthenticatedUser();
       router.replace("/login");
     } catch (error) {
-      Alert.alert(
-        "No se pudo cerrar sesión",
-        error instanceof Error ? error.message : "Inténtalo de nuevo."
-      );
+      Alert.alert("No se pudo cerrar sesión", error instanceof Error ? error.message : "Inténtalo de nuevo.");
       setIsSigningOut(false);
     }
   };
 
-  const confirmSignOut = () => {
-    Alert.alert("Cerrar sesión", "Tendrás que iniciar sesión de nuevo para entrar a PLENO.", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Cerrar sesión", style: "destructive", onPress: signOut },
-    ]);
-  };
+  const confirmSignOut = () => Alert.alert("Cerrar sesión", "Tendrás que iniciar sesión de nuevo para entrar a PLENO.", [
+    { text: "Cancelar", style: "cancel" },
+    { text: "Cerrar sesión", style: "destructive", onPress: signOut },
+  ]);
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <AppText variant="h1">Configuración</AppText>
-
-        <View style={styles.accountRow}>
-          <View style={styles.avatarArea}>
-            {googleUser?.photo ? (
-              <Image source={{ uri: googleUser.photo }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <AppText variant="h2" color={colors.white} style={styles.initial}>
-                  {initial}
-                </AppText>
-              </View>
-            )}
+    <Screen padded={false} safeAreaColor={colors.accent}>
+      <ScrollView bounces={false} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <AppText color={colors.text} style={styles.heroTitle}>Mi perfil</AppText>
+            <AppText color={colors.text} style={styles.heroSubtitle}>Administra tu cuenta{"\n"}y conexiones</AppText>
           </View>
-
-          <View style={styles.accountDetails}>
-            <AppText variant="h2" numberOfLines={1}>{name}</AppText>
-            <AppText color={colors.textSecondary} style={styles.email} numberOfLines={1}>
-              {googleUser?.email || "Cuenta de Google"}
-            </AppText>
-            <View style={styles.googleStatus}>
-              <Image source={GoogleIcon} style={styles.googleIcon} resizeMode="contain" />
-              <AppText variant="caption" color={colors.text} style={styles.statusLabel}>
-                Conectado con Google
-              </AppText>
-            </View>
-          </View>
+          <Image source={ProfileImage} resizeMode="contain" style={styles.heroImage} />
+          <Svg height={126} preserveAspectRatio="none" style={styles.heroWave} viewBox="0 0 390 126" width="100%"><Path d="M0 92C77 93 128 20 210 20c80 0 116 71 180 72v34H0V92Z" fill={colors.background} /></Svg>
         </View>
 
-        <AppText variant="caption" color={colors.textMuted} style={styles.sectionTitle}>
-          INTEGRACIONES
-        </AppText>
+        <View style={styles.profileBody}>
+          <View style={styles.avatarArea}>
+            {googleUser?.photo ? <Image source={{ uri: googleUser.photo }} style={styles.avatar} /> : <View style={styles.avatarFallback}><AppText color={colors.text} style={styles.initial}>{initial}</AppText></View>}
+          </View>
+          <AppText numberOfLines={1} style={styles.profileName}>{name}</AppText>
+          <AppText color={colors.text} numberOfLines={1} style={styles.email}>{googleUser?.email || "Cuenta de Google"}</AppText>
+          <View style={styles.googleStatus}>
+            <Image source={GoogleIcon} resizeMode="contain" style={styles.googleIcon} />
+            <AppText color={colors.text} style={styles.statusLabel}>Conectado con Google</AppText>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Vincular Google Classroom"
-          onPress={() => router.push("/classroom")}
-          style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}
-        >
-          <View style={styles.classroomIcon}>
-            <GoogleClassroomIcon width={24} height={21} />
           </View>
-          <View style={styles.settingDetails}>
-            <AppText variant="h4">Google Classroom</AppText>
-            <AppText color={colors.textSecondary} style={styles.settingDescription}>
-              Importa cursos y tareas cuando quieras.
-            </AppText>
-          </View>
-          <View style={styles.optionalBadge}>
-            <AppText variant="caption" style={styles.optionalText}>Opcional</AppText>
-          </View>
-          <AppText color={colors.textMuted} style={styles.chevron}>›</AppText>
-        </Pressable>
 
-        <View style={styles.signOutContainer}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSigningOut}
-            onPress={confirmSignOut}
-            style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed, isSigningOut && styles.disabled]}
-          >
-            <AppText color={colors.danger} style={styles.signOutIcon}>↪</AppText>
-            <AppText color={colors.danger} style={styles.signOutLabel}>
-              {isSigningOut ? "Cerrando sesión..." : "Cerrar sesión"}
-            </AppText>
-            <AppText color={colors.danger} style={styles.chevron}>›</AppText>
+          <AppText color={colors.textMuted} style={styles.sectionTitle}>INTEGRACIONES</AppText>
+          <View style={styles.classroomCard}>
+            <View style={styles.classroomTopRow}>
+              <View style={styles.classroomIcon}><GoogleClassroomIcon height={36} width={41} /></View>
+              <View style={styles.connectionStatus}><View style={[styles.connectionDot, isClassroomLinked && styles.connectionDotLinked]} /><AppText color={isClassroomLinked ? colors.success : colors.primary} style={styles.connectionText}>{isClassroomLinked ? "Vinculado" : "Sin vincular"}</AppText></View>
+            </View>
+            <View style={styles.settingDetails}>
+              <AppText style={styles.classroomTitle}>Google Classroom</AppText>
+              <AppText color={colors.textSecondary} style={styles.settingDescription}>Vincula tu cuenta para sincronizar tus cursos, tareas y próximos pendientes automáticamente.</AppText>
+            </View>
+            <Pressable accessibilityLabel={isClassroomLinked ? "Actualizar Google Classroom" : "Conectar Google Classroom"} accessibilityRole="button" disabled={isLinkingClassroom} onPress={() => void linkClassroom()} style={({ pressed }) => [styles.connectClassroomButton, pressed && styles.pressed, isLinkingClassroom && styles.disabled]}>
+              {isLinkingClassroom ? <ActivityIndicator color={colors.white} size="small" /> : <><LinkIcon /><AppText color={colors.white} style={styles.connectClassroomButtonText}>{isClassroomLinked ? "Actualizar Classroom" : "Conectar Classroom"}</AppText></>}
+            </Pressable>
+          </View>
+
+          <Pressable accessibilityRole="button" disabled={isSigningOut} onPress={confirmSignOut} style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed, isSigningOut && styles.disabled]}>
+            <SignOutIcon /><AppText color={colors.danger} style={styles.signOutLabel}>{isSigningOut ? "Cerrando sesión..." : "Cerrar sesión"}</AppText><View style={styles.signOutArrow}><ArrowIcon /></View>
           </Pressable>
         </View>
       </ScrollView>
@@ -120,79 +127,39 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { flexGrow: 1, paddingTop: spacing.xxl, paddingBottom: spacing.xxl },
-  accountRow: { marginTop: spacing.xl, alignItems: "center", flexDirection: "row" },
-  avatarArea: { width: 84, height: 84, alignItems: "center", justifyContent: "center" },
-  avatar: { width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: colors.border },
-  avatarFallback: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: colors.border,
-    backgroundColor: colors.primary,
-  },
-  initial: { fontWeight: "700" },
-  accountDetails: { flex: 1, marginLeft: spacing.md, gap: spacing.xs },
-  email: { opacity: 0.86 },
-  googleStatus: {
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.xs,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  googleIcon: { width: 18, height: 18 },
-  statusLabel: { fontWeight: "700" },
-  sectionTitle: { marginTop: spacing.xxl, marginBottom: spacing.sm, fontWeight: "700", letterSpacing: 0.8 },
-  settingRow: {
-    minHeight: 88,
-    padding: spacing.md,
-    alignItems: "center",
-    flexDirection: "row",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    backgroundColor: colors.white,
-  },
-  classroomIcon: {
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  settingDetails: { flex: 1, marginLeft: spacing.md },
-  settingDescription: { marginTop: 2, fontSize: 13 },
-  optionalBadge: {
-    marginLeft: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderRadius: radius.lg,
-    backgroundColor: "#FFF4C2",
-  },
-  optionalText: { color: "#8A6500", fontWeight: "700" },
-  chevron: { marginLeft: spacing.sm, fontSize: 26, lineHeight: 28 },
-  signOutContainer: { flex: 1, justifyContent: "flex-end", paddingTop: spacing.xxxl },
-  signOutRow: {
-    minHeight: 56,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    flexDirection: "row",
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    borderRadius: radius.lg,
-    backgroundColor: "#FFF7F7",
-  },
-  signOutIcon: { marginRight: spacing.sm, fontSize: 22, fontWeight: "700" },
-  signOutLabel: { flex: 1, fontWeight: "700" },
-  pressed: { opacity: 0.72 },
+  content: { backgroundColor: colors.background, flexGrow: 1, paddingBottom: spacing.xxl },
+  hero: { backgroundColor: colors.accent, height: 320, overflow: "hidden", position: "relative" },
+  heroCopy: { left: spacing.xl, position: "absolute", top: 64, zIndex: 2 },
+  heroTitle: { fontSize:32, fontWeight: "700", letterSpacing: -1.2, lineHeight: 46, marginTop:-24 },
+  heroSubtitle: { fontSize: 18, lineHeight: 28,  color: colors.text },
+  heroImage: { height: 230, position: "absolute", right: -60, top: 40, width: 230 },
+  heroWave: { bottom: -1, left: 0, position: "absolute", right: 0 },
+  profileBody: { alignItems: "center", marginTop: -170, paddingHorizontal: spacing.xl, zIndex: 3 },
+  avatarArea: { height: 108, width: 108 },
+  avatar: { backgroundColor: colors.white, borderRadius: 54, height: 108, width: 108 },
+  avatarFallback: { alignItems: "center", backgroundColor: colors.white, borderRadius: 54, height: 108, justifyContent: "center", width: 108 },
+  initial: { fontSize: 38, fontWeight: "600" },
+  profileName: { fontSize: 31, fontWeight: "700", letterSpacing: -0.65, lineHeight: 38, marginTop: spacing.lg, textAlign: "center" },
+  email: { fontSize: 17, lineHeight: 24, marginTop: 3, textAlign: "center" },
+  googleStatus: { alignItems: "center", backgroundColor: colors.white, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderColor: colors.border, borderWidth: 1 },
+  googleIcon: { height: 18, width: 18 },
+  statusLabel: { fontSize: 15, fontWeight: "500" },
+  sectionTitle: { alignSelf: "flex-start", fontSize: 13, fontWeight: "800", letterSpacing: 1.2, marginTop: spacing.xl },
+  classroomCard: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.xl, borderWidth: 1, marginTop: spacing.md, padding: spacing.xl, width: "100%" },
+  classroomTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  classroomIcon: { height: 36, width: 41 },
+  settingDetails: { width: "100%" },
+  classroomTitle: { fontSize: 21, fontWeight: "700", lineHeight: 27, marginTop: spacing.lg },
+  settingDescription: { fontSize: 16, lineHeight: 24, marginTop: 5, textAlign: "justify" },
+  connectionStatus: { alignItems: "center", flexDirection: "row" },
+  connectionDot: { backgroundColor: colors.primary, borderRadius: radius.full, height: 10, marginRight: spacing.sm, width: 10 },
+  connectionDotLinked: { backgroundColor: colors.success },
+  connectionText: { fontSize: 16, fontWeight: "700" },
+  connectClassroomButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, height: 56, justifyContent: "center", marginTop: spacing.xl },
+  connectClassroomButtonText: { fontSize: 18, fontWeight: "700" },
+  signOutRow: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", marginTop: spacing.xl, minHeight: 78, paddingHorizontal: spacing.lg, width: "100%" },
+  signOutLabel: { fontSize: 18, fontWeight: "700", marginLeft: spacing.md },
+  signOutArrow: { marginLeft: "auto" },
+  pressed: { opacity: 0.76 },
   disabled: { opacity: 0.55 },
 });

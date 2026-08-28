@@ -2,20 +2,18 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-import { useAction } from "convex/react";
 
 import { Screen } from "@/components/layout";
 import { AppText, Button } from "@/components/ui";
 import { colors, spacing } from "@/theme";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { classroomScopes } from "@/features/auth/google";
+import { syncClassroomTasks } from "@/features/classroom/api";
 import { markOnboardingComplete } from "@/features/auth/onboarding";
-import { api } from "@convex/_generated/api";
 
 export default function ClassroomScreen() {
   const [isLinking, setIsLinking] = useState(false);
   const { user } = useAuth();
-  const syncClassroomTasks = useAction(api.classroom.syncClassroomTasks);
 
   const continueToApp = async () => {
     if (user) await markOnboardingComplete(user.id);
@@ -35,16 +33,15 @@ export default function ClassroomScreen() {
       if (!authorization || authorization.type === "cancelled") return;
 
       const { accessToken } = await GoogleSignin.getTokens();
-      const result = await syncClassroomTasks({
-        userId: user.id,
-        accessToken,
-      });
+      const result = await syncClassroomTasks(accessToken);
 
       Alert.alert(
         "Classroom vinculado",
         result.totalSynced === 1
           ? "Importamos 1 tarea."
-          : `Importamos ${result.totalSynced} tareas.`
+          : typeof result.totalSynced === "number"
+            ? `Importamos ${result.totalSynced} tareas.`
+            : "Tus tareas se sincronizaron correctamente."
       );
       await continueToApp();
     } catch (error) {
