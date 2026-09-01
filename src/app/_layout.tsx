@@ -40,7 +40,7 @@ function RootNavigator() {
     }
   }, [consumePendingRedirect, isAuthenticated, isLoading, pendingRedirect, router]);
 
-  if (isLoading) {
+  if (isLoading || (isAuthenticated && pendingRedirect)) {
     return (
       <View style={styles.loading}>
         <StatusBar style="light" />

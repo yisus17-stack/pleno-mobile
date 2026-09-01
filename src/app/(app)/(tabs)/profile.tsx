@@ -2,8 +2,10 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import { useMutation, useQuery } from "convex/react";
 import Svg, { Path } from "react-native-svg";
 
+import { api } from "@convex/_generated/api";
 import GoogleClassroomIcon from "@/assets/icons/google-classroom.svg";
 import GoogleIcon from "@/assets/icons/google.png";
 import ProfileImage from "@/assets/images/perfil_image.png";
@@ -15,6 +17,20 @@ import { classroomScopes, configureGoogleSignIn } from "@/features/auth/google";
 import { syncClassroomTasks } from "@/features/classroom/api";
 
 configureGoogleSignIn();
+
+type ClassroomConnection = {
+  classroomConnectedAt?: number;
+  classroomEnabled?: boolean;
+  lastSyncedAt?: number;
+};
+
+// Las funciones ya están desplegadas en Convex; el código generado local aún no las tipa.
+const usersApi = (api as unknown as {
+  users: {
+    getUserByGoogleId: any;
+    setClassroomEnabled: any;
+  };
+}).users;
 
 function LinkIcon() {
   return <Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M10.2 13.8a4.5 4.5 0 0 0 6.36.04l2.1-2.1a4.5 4.5 0 0 0-6.36-6.36l-1.2 1.2" stroke={colors.white} strokeWidth={2.2} strokeLinecap="round" /><Path d="M13.8 10.2a4.5 4.5 0 0 0-6.36-.04l-2.1 2.1a4.5 4.5 0 0 0 6.36 6.36l1.2-1.2" stroke={colors.white} strokeWidth={2.2} strokeLinecap="round" /></Svg>;
@@ -35,11 +51,17 @@ function ArrowIcon() {
 export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isLinkingClassroom, setIsLinkingClassroom] = useState(false);
-  const [isClassroomLinked, setIsClassroomLinked] = useState(false);
   const { clearAuthenticatedUser, user: authenticatedUser } = useAuth();
+  const classroomUser = useQuery(
+    usersApi.getUserByGoogleId,
+    authenticatedUser ? { googleId: authenticatedUser.id } : "skip"
+  ) as ClassroomConnection | null | undefined;
+  const setClassroomEnabled = useMutation(usersApi.setClassroomEnabled);
   const googleUser = authenticatedUser || GoogleSignin.getCurrentUser()?.user;
   const name = googleUser?.name || googleUser?.email.split("@")[0] || "Usuario";
   const initial = name.charAt(0).toUpperCase();
+  const isClassroomLinked = classroomUser?.classroomEnabled === true;
+  const isClassroomStatusLoading = Boolean(authenticatedUser) && classroomUser === undefined;
 
   const linkClassroom = async () => {
     if (!authenticatedUser) {
@@ -52,7 +74,7 @@ export default function ProfileScreen() {
       if (!authorization || authorization.type === "cancelled") return;
       const { accessToken } = await GoogleSignin.getTokens();
       const result = await syncClassroomTasks(accessToken);
-      setIsClassroomLinked(true);
+      await setClassroomEnabled({ userId: authenticatedUser.id, enabled: true });
       Alert.alert("Classroom vinculado", result.totalSynced === 1 ? "Importamos 1 tarea." : typeof result.totalSynced === "number" ? `Importamos ${result.totalSynced} tareas.` : "Tus tareas se sincronizaron correctamente.");
     } catch (error) {
       Alert.alert("No se pudo vincular Classroom", error instanceof Error ? error.message : "Inténtalo de nuevo.");
@@ -60,6 +82,32 @@ export default function ProfileScreen() {
       setIsLinkingClassroom(false);
     }
   };
+
+  const disconnectClassroom = () => Alert.alert(
+    "¿Desconectar Classroom?",
+    "Dejarás de sincronizar tareas de Google Classroom automáticamente.",
+    [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Desconectar",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            if (!authenticatedUser) return;
+
+            setIsLinkingClassroom(true);
+            try {
+              await setClassroomEnabled({ userId: authenticatedUser.id, enabled: false });
+            } catch (error) {
+              Alert.alert("No se pudo desconectar Classroom", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+            } finally {
+              setIsLinkingClassroom(false);
+            }
+          })();
+        },
+      },
+    ]
+  );
 
   const signOut = async () => {
     setIsSigningOut(true);
@@ -106,16 +154,24 @@ export default function ProfileScreen() {
           <View style={styles.classroomCard}>
             <View style={styles.classroomTopRow}>
               <View style={styles.classroomIcon}><GoogleClassroomIcon height={36} width={41} /></View>
-              <View style={styles.connectionStatus}><View style={[styles.connectionDot, isClassroomLinked && styles.connectionDotLinked]} /><AppText color={isClassroomLinked ? colors.success : colors.primary} style={styles.connectionText}>{isClassroomLinked ? "Vinculado" : "Sin vincular"}</AppText></View>
+              <View style={styles.connectionStatus}><View style={[styles.connectionDot, isClassroomLinked && styles.connectionDotLinked]} /><AppText color={isClassroomStatusLoading ? colors.textMuted : isClassroomLinked ? colors.success : colors.primary} style={styles.connectionText}>{isClassroomStatusLoading ? "Verificando..." : isClassroomLinked ? "Vinculado" : "Sin vincular"}</AppText></View>
             </View>
             <View style={styles.settingDetails}>
               <AppText style={styles.classroomTitle}>Google Classroom</AppText>
               <AppText color={colors.textSecondary} style={styles.settingDescription}>Vincula tu cuenta para sincronizar tus cursos, tareas y próximos pendientes automáticamente.</AppText>
             </View>
-            <Pressable accessibilityLabel={isClassroomLinked ? "Actualizar Google Classroom" : "Conectar Google Classroom"} accessibilityRole="button" disabled={isLinkingClassroom} onPress={() => void linkClassroom()} style={({ pressed }) => [styles.connectClassroomButton, pressed && styles.pressed, isLinkingClassroom && styles.disabled]}>
-              {isLinkingClassroom ? <ActivityIndicator color={colors.white} size="small" /> : <><LinkIcon /><AppText color={colors.white} style={styles.connectClassroomButtonText}>{isClassroomLinked ? "Actualizar Classroom" : "Conectar Classroom"}</AppText></>}
+            <Pressable accessibilityLabel={isClassroomLinked ? "Desconectar Google Classroom" : "Conectar Google Classroom"} accessibilityRole="button" disabled={isLinkingClassroom} onPress={() => isClassroomLinked ? disconnectClassroom() : void linkClassroom()} style={({ pressed }) => [styles.connectClassroomButton, isClassroomLinked && styles.disconnectClassroomButton, pressed && styles.pressed, isLinkingClassroom && styles.disabled]}>
+              {isLinkingClassroom ? <ActivityIndicator color={colors.white} size="small" /> : <><LinkIcon /><AppText color={colors.white} style={styles.connectClassroomButtonText}>{isClassroomLinked ? "Desconectar Classroom" : "Conectar Classroom"}</AppText></>}
             </Pressable>
           </View>
+
+          <Pressable accessibilityRole="button" onPress={() => router.push("/preferences?mode=edit")} style={({ pressed }) => [styles.plannerProfileRow, pressed && styles.pressed]}>
+            <View>
+              <AppText style={styles.plannerProfileTitle}>Tu planificación</AppText>
+              <AppText color={colors.textSecondary} variant="bodySmall" style={styles.plannerProfileDescription}>Disponibilidad, energía y ritmo de trabajo</AppText>
+            </View>
+            <AppText color={colors.primary} style={styles.plannerProfileAction}>Editar</AppText>
+          </Pressable>
 
           <Pressable accessibilityRole="button" disabled={isSigningOut} onPress={confirmSignOut} style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed, isSigningOut && styles.disabled]}>
             <SignOutIcon /><AppText color={colors.danger} style={styles.signOutLabel}>{isSigningOut ? "Cerrando sesión..." : "Cerrar sesión"}</AppText><View style={styles.signOutArrow}><ArrowIcon /></View>
@@ -156,7 +212,12 @@ const styles = StyleSheet.create({
   connectionDotLinked: { backgroundColor: colors.success },
   connectionText: { fontSize: 16, fontWeight: "700" },
   connectClassroomButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, height: 56, justifyContent: "center", marginTop: spacing.xl },
+  disconnectClassroomButton: { backgroundColor: colors.danger },
   connectClassroomButtonText: { fontSize: 18, fontWeight: "700" },
+  plannerProfileRow: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xl, minHeight: 76, paddingHorizontal: spacing.lg, width: "100%" },
+  plannerProfileTitle: { fontSize: 17, fontWeight: "700" },
+  plannerProfileDescription: { marginTop: 3 },
+  plannerProfileAction: { fontSize: 15, fontWeight: "700" },
   signOutRow: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", marginTop: spacing.xl, minHeight: 78, paddingHorizontal: spacing.lg, width: "100%" },
   signOutLabel: { fontSize: 18, fontWeight: "700", marginLeft: spacing.md },
   signOutArrow: { marginLeft: "auto" },

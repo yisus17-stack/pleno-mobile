@@ -150,10 +150,6 @@ export function useTasks(enabled: boolean) {
 }
 
 export async function syncClassroomTasks(accessToken: string): Promise<ClassroomSyncResult> {
-  if (__DEV__) {
-    console.log("Google access token (solo desarrollo):", accessToken);
-  }
-
   const response = await fetch(`${API_URL}/v1/tasks/sync`, {
     method: "POST",
     headers: {

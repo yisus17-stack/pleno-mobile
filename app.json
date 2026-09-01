@@ -29,16 +29,19 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#FFD84D",
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash.png",
           "imageWidth": 100
         }
       ],
       [
         "expo-notifications",
         {
-          "defaultChannel": "default"
+          "defaultChannel": "default",
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#35A0F8"
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

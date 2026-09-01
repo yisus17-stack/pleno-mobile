@@ -1,5 +1,5 @@
-import { v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 export const storeUser = mutation({
   args: {
@@ -11,8 +11,8 @@ export const storeUser = mutation({
   },
   handler: async (ctx, args) => {
     const existingUser = await ctx.db
-      .query('users')
-      .withIndex('by_google_id', (q) => q.eq('googleId', args.googleId))
+      .query("users")
+      .withIndex("by_google_id", (q) => q.eq("googleId", args.googleId))
       .unique();
 
     if (existingUser) {
@@ -25,7 +25,7 @@ export const storeUser = mutation({
       return existingUser._id;
     }
 
-    return await ctx.db.insert('users', {
+    return await ctx.db.insert("users", {
       googleId: args.googleId,
       name: args.name,
       email: args.email,
@@ -40,8 +40,8 @@ export const getUserByGoogleId = query({
   args: { googleId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query('users')
-      .withIndex('by_google_id', (q) => q.eq('googleId', args.googleId))
+      .query("users")
+      .withIndex("by_google_id", (q) => q.eq("googleId", args.googleId))
       .unique();
   },
 });

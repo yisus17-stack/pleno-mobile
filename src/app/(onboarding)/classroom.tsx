@@ -9,14 +9,12 @@ import { colors, spacing } from "@/theme";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { classroomScopes } from "@/features/auth/google";
 import { syncClassroomTasks } from "@/features/classroom/api";
-import { markOnboardingComplete } from "@/features/auth/onboarding";
 
 export default function ClassroomScreen() {
   const [isLinking, setIsLinking] = useState(false);
   const { user } = useAuth();
 
   const continueToApp = async () => {
-    if (user) await markOnboardingComplete(user.id);
     router.replace("/(app)/(tabs)");
   };
 

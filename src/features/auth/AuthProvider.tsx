@@ -1,8 +1,9 @@
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleSignin, User } from "@react-native-google-signin/google-signin";
+import { useQuery } from "convex/react";
 
 import { configureGoogleSignIn } from "@/features/auth/google";
-import { hasCompletedOnboarding } from "@/features/auth/onboarding";
+import { profilesApi, UserProfile } from "@/features/profiles/api";
 
 type GoogleUser = User["user"];
 type AuthRedirect = "/welcome" | "/(app)/(tabs)";
@@ -23,6 +24,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingRedirect, setPendingRedirect] = useState<AuthRedirect | null>(null);
+  const [hasResolvedInitialRoute, setHasResolvedInitialRoute] = useState(false);
+  const shouldResolveRedirectRef = useRef(true);
+  const profile = useQuery(
+    profilesApi.getProfile,
+    user ? { userId: user.id } : "skip"
+  ) as UserProfile | null | undefined;
+  const isProfileLoading = user !== null && profile === undefined;
 
   useEffect(() => {
     let isMounted = true;
@@ -35,9 +43,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const response = await GoogleSignin.signInSilently();
         if (isMounted && response.type === "success") {
+          shouldResolveRedirectRef.current = true;
           setUser(response.data.user);
-          const hasCompleted = await hasCompletedOnboarding(response.data.user.id);
-          if (isMounted && !hasCompleted) setPendingRedirect("/welcome");
         }
       } catch {
         // If the native Google session is no longer valid, show the login screen.
@@ -53,25 +60,35 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user || profile === undefined || !shouldResolveRedirectRef.current) return;
+
+    setPendingRedirect(profile ? "/(app)/(tabs)" : "/welcome");
+    setHasResolvedInitialRoute(true);
+    shouldResolveRedirectRef.current = false;
+  }, [profile, user]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      isLoading,
+      isLoading: isLoading || isProfileLoading || (user !== null && !hasResolvedInitialRoute),
       isAuthenticated: user !== null,
       pendingRedirect,
       setAuthenticatedUser: (authenticatedUser) => {
+        shouldResolveRedirectRef.current = true;
         setUser(authenticatedUser);
-        void hasCompletedOnboarding(authenticatedUser.id).then((hasCompleted) => {
-          setPendingRedirect(hasCompleted ? "/(app)/(tabs)" : "/welcome");
-        });
+        setPendingRedirect(null);
+        setHasResolvedInitialRoute(false);
       },
       clearAuthenticatedUser: () => {
+        shouldResolveRedirectRef.current = true;
         setUser(null);
         setPendingRedirect(null);
+        setHasResolvedInitialRoute(false);
       },
       consumePendingRedirect: () => setPendingRedirect(null),
     }),
-    [isLoading, pendingRedirect, user]
+    [hasResolvedInitialRoute, isLoading, isProfileLoading, pendingRedirect, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

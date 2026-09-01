@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "convex/react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,11 +13,21 @@ import BannerImage from "@/assets/images/tareas_image.png";
 import { Screen } from "@/components/layout";
 import { AppText, Card } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { classroomScopes } from "@/features/auth/google";
 import { syncClassroomTasks } from "@/features/classroom/api";
+import { cancelTaskReminder, syncTaskReminder } from "@/features/notifications/taskReminders";
 import { colors, radius, spacing } from "@/theme";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+
+const usersApi = (api as unknown as {
+  users: {
+    getUserByGoogleId: any;
+  };
+}).users;
+
+type ClassroomConnection = {
+  classroomEnabled?: boolean;
+};
 
 function TaskCheckIcon({ completed }: { completed: boolean }) {
   return (
@@ -56,6 +66,14 @@ function getDueLabel(dueDate?: number) {
   if (dueDate < startOfDayAfterTomorrow && dueDate >= startOfTomorrow) return "Mañana";
 
   return due.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+function isTaskOverdue(dueDate?: number) {
+  if (!dueDate) return false;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return dueDate < startOfToday;
 }
 
 function getDueTime(dueDate?: number) {
@@ -100,6 +118,21 @@ function formatSelectedTime(date: Date) {
   return date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Material DatePicker en Android representa los días seleccionados a medianoche UTC.
+// Convertimos ese valor a una fecha local para evitar que en México se guarde el día/mes anterior.
+function normalizePickerDate(date: Date) {
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12);
+}
+
+function toPickerCalendarDate(date: Date) {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+function getMinimumTaskDate() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+}
+
 function buildManualDueDate(date: Date | null, time: Date | null) {
   if (!date) return undefined;
 
@@ -114,6 +147,7 @@ export default function TasksScreen() {
   const { taskId } = useLocalSearchParams<{ taskId?: string }>();
   const [isSyncingClassroom, setIsSyncingClassroom] = useState(false);
   const [isAssignedExpanded, setIsAssignedExpanded] = useState(true);
+  const [isOverdueExpanded, setIsOverdueExpanded] = useState(true);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,6 +173,10 @@ export default function TasksScreen() {
   const isClosingCreateSheetRef = useRef(false);
   const createSheetDragDistanceRef = useRef(0);
   const tasks = useQuery(api.tasks.getTasksByUser, user ? { userId: user.id } : "skip");
+  const classroomUser = useQuery(
+    usersApi.getUserByGoogleId,
+    user ? { googleId: user.id } : "skip"
+  ) as ClassroomConnection | null | undefined;
   const updateTask = useMutation(api.tasks.updateTask);
   const createManualTask = useMutation(api.tasks.createManualTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
@@ -160,6 +198,7 @@ export default function TasksScreen() {
     setSelectedTaskId(taskId);
     setExpandedTaskId(taskId);
     setIsAssignedExpanded(true);
+    setIsOverdueExpanded(true);
     setIsCompletedExpanded(true);
   }, [allTasks, taskId]);
 
@@ -168,7 +207,8 @@ export default function TasksScreen() {
       ? [...taskList].sort((first, second) => Number(second._id === selectedTaskId) - Number(first._id === selectedTaskId))
       : taskList;
 
-  const assignedTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status === "todo"));
+  const assignedTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status === "todo" && !isTaskOverdue(task.dueDate)));
+  const overdueTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status !== "completed" && isTaskOverdue(task.dueDate)));
   const taskSections = [
     {
       title: "Asignadas",
@@ -176,6 +216,13 @@ export default function TasksScreen() {
       textColor: colors.text,
       emptyMessage: "No tienes tareas asignadas.",
       tasks: assignedTasks,
+    },
+    {
+      title: "Vencidas",
+      color: colors.danger,
+      textColor: colors.white,
+      emptyMessage: "No tienes tareas vencidas.",
+      tasks: overdueTasks,
     },
     {
       title: "Completadas",
@@ -195,6 +242,14 @@ export default function TasksScreen() {
         userId: user.id,
         status: task.status === "completed" ? "todo" : "completed",
       });
+
+      if (task.source === "manual") {
+        if (task.status === "completed") {
+          await syncTaskReminder({ dueDate: task.dueDate, taskId: task._id, title: task.title });
+        } else {
+          await cancelTaskReminder(task._id);
+        }
+      }
     } catch (error) {
       Alert.alert(
         "No se pudo actualizar la tarea",
@@ -209,12 +264,26 @@ export default function TasksScreen() {
       return;
     }
 
+    if (classroomUser === undefined) {
+      Alert.alert("Comprobando Classroom", "Espera un momento mientras verificamos tu conexión.");
+      return;
+    }
+
+    if (!classroomUser?.classroomEnabled) {
+      Alert.alert(
+        "Primero conecta Classroom",
+        "Vincula Google Classroom desde Configuración para poder actualizar tus tareas.",
+        [
+          { text: "Ahora no", style: "cancel" },
+          { text: "Ir a Configuración", onPress: () => router.push("/profile") },
+        ]
+      );
+      return;
+    }
+
     setIsSyncingClassroom(true);
 
     try {
-      const authorization = await GoogleSignin.addScopes({ scopes: classroomScopes });
-      if (!authorization || authorization.type === "cancelled") return;
-
       const { accessToken } = await GoogleSignin.getTokens();
       const result = await syncClassroomTasks(accessToken);
 
@@ -372,8 +441,9 @@ export default function TasksScreen() {
           dueDate,
           priority: manualPriority,
         });
+        await syncTaskReminder({ dueDate, taskId: editingTask._id, title: manualTitle.trim() });
       } else {
-        await createManualTask({
+        const createdTask = await createManualTask({
           userId: user.id,
           title: manualTitle.trim(),
           courseName: manualCourseName.trim() || undefined,
@@ -381,6 +451,7 @@ export default function TasksScreen() {
           dueDate,
           priority: manualPriority,
         });
+        await syncTaskReminder({ dueDate, taskId: createdTask.taskId, title: manualTitle.trim() });
       }
 
       resetManualTaskForm();
@@ -417,6 +488,7 @@ export default function TasksScreen() {
 
               try {
                 await deleteTask({ taskId: manualTaskMenu._id as never, userId: user.id });
+                await cancelTaskReminder(manualTaskMenu._id);
               } catch (error) {
                 Alert.alert(
                   "No se pudo eliminar la tarea",
@@ -610,10 +682,13 @@ export default function TasksScreen() {
             <View key={section.title} style={styles.taskSection}>
               {(() => {
                 const isAssignedSection = section.title === "Asignadas";
+                const isOverdueSection = section.title === "Vencidas";
                 const isCompletedSection = section.title === "Completadas";
-                const isCollapsible = isAssignedSection || isCompletedSection;
+                const isCollapsible = isAssignedSection || isOverdueSection || isCompletedSection;
                 const isExpanded = isAssignedSection
                   ? isAssignedExpanded
+                  : isOverdueSection
+                    ? isOverdueExpanded
                   : isCompletedSection
                     ? isCompletedExpanded
                     : true;
@@ -626,6 +701,7 @@ export default function TasksScreen() {
                 disabled={!isCollapsible}
                 onPress={() => {
                   if (isAssignedSection) setIsAssignedExpanded((current) => !current);
+                  if (isOverdueSection) setIsOverdueExpanded((current) => !current);
                   if (isCompletedSection) setIsCompletedExpanded((current) => !current);
                 }}
                 style={({ pressed }) => [
@@ -675,6 +751,7 @@ export default function TasksScreen() {
                 const priority = getPriorityDetails(task.priority);
                 const source = getSourceDetails(task.source);
                 const isCompleted = task.status === "completed";
+                const isOverdue = !isCompleted && isTaskOverdue(task.dueDate);
                 const hasInstructions = task.description.trim().length > 0;
                 const isInstructionsExpanded = expandedTaskId === task._id;
 
@@ -743,8 +820,8 @@ export default function TasksScreen() {
                       </View>
                     </View>
                     <View style={styles.taskFooter}>
-                      <AppText color={colors.textSecondary} variant="caption">
-                        {getStatusLabel(task.status)}
+                      <AppText color={isOverdue ? colors.danger : colors.textSecondary} variant="caption">
+                        {isOverdue ? "Vencida" : getStatusLabel(task.status)}
                       </AppText>
                       <View style={styles.dueDetails}>
                         <AppText color={task.dueDate ? priority.color : colors.textMuted} variant="caption" style={styles.dueDate}>
@@ -960,17 +1037,18 @@ export default function TasksScreen() {
           {isDatePickerVisible && (
             <DateTimePicker
               accentColor={colors.primary}
-              minimumDate={new Date()}
+              minimumDate={getMinimumTaskDate()}
               mode="date"
               negativeButton={{ label: "Cancelar" }}
               onDismiss={() => setIsDatePickerVisible(false)}
               onValueChange={(_, date) => {
-                setManualDate(date);
+                const normalizedDate = normalizePickerDate(date);
+                setManualDate(normalizedDate);
                 setIsDatePickerVisible(false);
               }}
               positiveButton={{ label: "Listo" }}
               presentation="dialog"
-              value={manualDate ?? new Date()}
+              value={toPickerCalendarDate(manualDate ?? new Date())}
             />
           )}
           {isTimePickerVisible && (
