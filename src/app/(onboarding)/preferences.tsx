@@ -48,10 +48,10 @@ const calculateEndTime = (startTime: string, hours: number) => {
   return `${Math.floor(totalMinutes / 60).toString().padStart(2, "0")}:${(totalMinutes % 60).toString().padStart(2, "0")}`;
 };
 
-function ChoiceRow({ label, value, onChange, options, isOptionDisabled, large = false, required = false }: { label: string; value: number | null; onChange: (next: number) => void; options: number[]; isOptionDisabled?: (option: number) => boolean; large?: boolean; required?: boolean }) {
+function ChoiceRow({ label, value, onChange, options, isOptionDisabled, large = false, required = false, invalid = false }: { label: string; value: number | null; onChange: (next: number) => void; options: number[]; isOptionDisabled?: (option: number) => boolean; large?: boolean; required?: boolean; invalid?: boolean }) {
   return <View style={styles.choiceGroup}>
-    <AppText style={[styles.inputLabel, styles.preferenceSelectLabel]}>{label}{required && <AppText color={colors.danger}> *</AppText>}</AppText>
-    <View style={[styles.choiceRow, large && styles.scaleChoiceRow]}>
+    <AppText color={invalid ? colors.danger : colors.text} style={styles.inputLabel}>{label}{required && <AppText color={colors.danger}> *</AppText>}</AppText>
+    <View style={[styles.choiceRow, large && styles.scaleChoiceRow, invalid && styles.choiceRowInvalid]}>
       {options.map((option) => {
         const isDisabled = isOptionDisabled?.(option) ?? false;
         if (large) {
@@ -72,16 +72,17 @@ function ChoiceRow({ label, value, onChange, options, isOptionDisabled, large = 
         return <Pressable disabled={isDisabled} key={option} onPress={() => onChange(option)} style={[styles.choice, value === option && styles.choiceActive, isDisabled && styles.choiceDisabled]}><AppText color={value === option ? colors.white : isDisabled ? colors.textMuted : colors.textSecondary} style={styles.choiceText}>{option}</AppText></Pressable>;
       })}
     </View>
+    {invalid && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Selecciona una opción para continuar.</AppText>}
   </View>;
 }
 
-function PreferenceSelect({ label, options, value, onChange, multiple = false, required = false }: { label: string; options: string[]; value: string; onChange: (next: string) => void; multiple?: boolean; required?: boolean }) {
+function PreferenceSelect({ label, options, value, onChange, multiple = false, required = false, invalid = false }: { label: string; options: string[]; value: string; onChange: (next: string) => void; multiple?: boolean; required?: boolean; invalid?: boolean }) {
   const selected = multiple ? parseList(value) : value ? [value] : [];
 
   return <View style={styles.preferenceSelectGroup}>
-    <AppText style={styles.inputLabel}>{label}{required && <AppText color={colors.danger}> *</AppText>}</AppText>
+    <AppText color={invalid ? colors.danger : colors.text} style={styles.inputLabel}>{label}{required && <AppText color={colors.danger}> *</AppText>}</AppText>
     {multiple && <AppText color={colors.textSecondary} variant="caption" style={styles.preferenceSelectHint}>Puedes seleccionar más de una opción.</AppText>}
-    <View style={styles.preferenceSelectMenu}>
+    <View style={[styles.preferenceSelectMenu, invalid && styles.preferenceSelectMenuInvalid]}>
       {options.map((option) => {
         const isSelected = selected.includes(option);
         return <Pressable accessibilityRole={multiple ? "checkbox" : "radio"} accessibilityState={{ checked: isSelected }} key={option} onPress={() => {
@@ -98,6 +99,7 @@ function PreferenceSelect({ label, options, value, onChange, multiple = false, r
         </Pressable>;
       })}
     </View>
+    {invalid && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Selecciona al menos una opción para continuar.</AppText>}
   </View>;
 }
 
@@ -115,6 +117,7 @@ export default function PreferencesScreen() {
   const [isOccupationMenuOpen, setIsOccupationMenuOpen] = useState(false);
   const [isCustomOccupation, setIsCustomOccupation] = useState(false);
   const [isStartTimePickerVisible, setIsStartTimePickerVisible] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [role, setRole] = useState("");
   const [age, setAge] = useState("");
   const [occupation, setOccupation] = useState("");
@@ -132,7 +135,8 @@ export default function PreferencesScreen() {
   const [goals, setGoals] = useState("");
   const [activities, setActivities] = useState("");
   const [distractions, setDistractions] = useState("");
-  const showValidation = (title: string, message: string) => showToast({ type: "warning", title, message });
+  const hasValidationError = (field: string) => validationErrors.includes(field);
+  const clearValidationError = (field: string) => setValidationErrors((current) => current.filter((item) => item !== field));
 
   useEffect(() => {
     if (!profile) return;
@@ -154,32 +158,40 @@ export default function PreferencesScreen() {
   const calculatedEndTime = calculateEndTime(startTime, availableHours ?? 0);
 
   const canLeaveTimeStep = () => {
-    if (!role.trim()) { showValidation("Elige tu rol", "Selecciona un rol para continuar."); return false; }
-    if (!age.trim() || toNumber(age, 0) < 10 || toNumber(age, 0) > 99) { showValidation("Revisa tu edad", "Escribe una edad entre 10 y 99 años."); return false; }
-    if (!occupation.trim()) { showValidation("Elige tu ocupación", "Selecciona tu ocupación o carrera para continuar."); return false; }
-    if (availableHours === null || studyHours === null || workHours === null) { showValidation("Completa tus horas", "Elige tus horas libres, de estudio y de trabajo para continuar."); return false; }
-    if (studyHours > availableHours) { showValidation("Revisa tus horas", "El tiempo de estudio no puede superar tus horas libres."); return false; }
-    if (workHours + availableHours > DAILY_AWAKE_HOURS) { showValidation("Revisa tus horas", "Reservamos al menos 8 horas al día para descansar."); return false; }
-    if (!selectedDays.length) { showValidation("Elige tus días", "Selecciona al menos un día en el que tengas tiempo disponible."); return false; }
-    if (!/^\d{2}:\d{2}$/.test(startTime)) { showValidation("Revisa el horario", "Elige una hora de inicio válida."); return false; }
-    if (timeToMinutes(startTime) + availableHours * 60 > 24 * 60) { showValidation("Revisa el horario", "Elige una hora de inicio más temprana para completar tu bloque disponible."); return false; }
-    return true;
+    const errors: string[] = [];
+    if (!role.trim()) errors.push("role");
+    if (!age.trim() || toNumber(age, 0) < 10 || toNumber(age, 0) > 99) errors.push("age");
+    if (!occupation.trim()) errors.push("occupation");
+    if (availableHours === null) errors.push("availableHours");
+    if (studyHours === null || (availableHours !== null && studyHours > availableHours)) errors.push("studyHours");
+    if (workHours === null || (availableHours !== null && workHours + availableHours > DAILY_AWAKE_HOURS)) errors.push("workHours");
+    if (!selectedDays.length) errors.push("days");
+    if (!/^\d{2}:\d{2}$/.test(startTime) || (availableHours !== null && timeToMinutes(startTime) + availableHours * 60 > 24 * 60)) errors.push("startTime");
+    setValidationErrors(errors);
+    return errors.length === 0;
   };
 
   const canLeaveEnergyStep = () => {
-    if (morningEnergy === null || afternoonEnergy === null || nightEnergy === null || tolerance === null) {
-      showValidation("Completa tu energía", "Elige una opción en cada pregunta para continuar.");
-      return false;
-    }
-    return true;
+    const errors = [
+      morningEnergy === null && "morningEnergy",
+      afternoonEnergy === null && "afternoonEnergy",
+      nightEnergy === null && "nightEnergy",
+      tolerance === null && "tolerance",
+    ].filter((field): field is string => Boolean(field));
+    setValidationErrors(errors);
+    return errors.length === 0;
   };
 
   const canSavePreferences = () => {
-    if (!workMethod || !learningStyle || !goals || !activities || !distractions) {
-      showValidation("Completa tus preferencias", "Elige al menos una opción en cada sección para guardar tu perfil.");
-      return false;
-    }
-    return true;
+    const errors = [
+      !workMethod && "workMethod",
+      !learningStyle && "learningStyle",
+      !goals && "goals",
+      !activities && "activities",
+      !distractions && "distractions",
+    ].filter((field): field is string => Boolean(field));
+    setValidationErrors(errors);
+    return errors.length === 0;
   };
 
   const handleContinue = () => {
@@ -208,81 +220,85 @@ export default function PreferencesScreen() {
     <AppText variant="h2">Disponibilidad</AppText>
     <View>
       <AppText style={styles.inputLabel}>Rol <AppText color={colors.danger}>*</AppText></AppText>
-      <Pressable accessibilityRole="button" onPress={() => setIsRoleMenuOpen((current) => !current)} style={styles.roleSelect}>
+      <Pressable accessibilityRole="button" onPress={() => setIsRoleMenuOpen((current) => !current)} style={[styles.roleSelect, hasValidationError("role") && styles.inputInvalid]}>
         <AppText color={role ? colors.text : colors.textMuted}>{isCustomRole ? "Otro" : role || "Selecciona tu rol"}</AppText>
         <Svg height={20} viewBox="0 0 24 24" width={20} fill="none">
           <Path d="m7 10 5 5 5-5" stroke={colors.text} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
         </Svg>
       </Pressable>
       {isRoleMenuOpen && <View style={styles.roleMenu}>
-        {roleOptions.map((option) => <Pressable key={option} onPress={() => { setRole(option); setIsCustomRole(false); setIsRoleMenuOpen(false); }} style={styles.roleMenuOption}><AppText>{option}</AppText></Pressable>)}
+        {roleOptions.map((option) => <Pressable key={option} onPress={() => { setRole(option); clearValidationError("role"); setIsCustomRole(false); setIsRoleMenuOpen(false); }} style={styles.roleMenuOption}><AppText>{option}</AppText></Pressable>)}
         <Pressable onPress={() => { setRole(""); setIsCustomRole(true); setIsRoleMenuOpen(false); }} style={styles.roleMenuOption}><AppText>Otro</AppText></Pressable>
       </View>}
-      {isCustomRole && <TextInput autoFocus onChangeText={setRole} placeholder="Escribe tu rol" placeholderTextColor={colors.textMuted} style={[styles.input, styles.customRoleInput]} value={role} />}
+      {isCustomRole && <TextInput autoFocus onChangeText={(value) => { setRole(value); if (value.trim()) clearValidationError("role"); }} placeholder="Escribe tu rol" placeholderTextColor={colors.textMuted} style={[styles.input, styles.customRoleInput, hasValidationError("role") && styles.inputInvalid]} value={role} />}
+      {hasValidationError("role") && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Selecciona o escribe tu rol.</AppText>}
     </View>
     <View>
       <AppText style={styles.inputLabel}>Edad <AppText color={colors.danger}>*</AppText></AppText>
-      <TextInput keyboardType="number-pad" maxLength={2} onChangeText={(value) => setAge(value.replace(/\D/g, ""))} placeholder="Escribe tu edad" placeholderTextColor={colors.textMuted} style={styles.input} value={age} />
+      <TextInput keyboardType="number-pad" maxLength={2} onChangeText={(value) => { const nextAge = value.replace(/\D/g, ""); setAge(nextAge); if (nextAge) clearValidationError("age"); }} placeholder="Escribe tu edad" placeholderTextColor={colors.textMuted} style={[styles.input, hasValidationError("age") && styles.inputInvalid]} value={age} />
+      {hasValidationError("age") && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Escribe una edad válida entre 10 y 99 años.</AppText>}
     </View>
     <View>
       <AppText style={styles.inputLabel}>Ocupación o carrera <AppText color={colors.danger}>*</AppText></AppText>
-      <Pressable accessibilityRole="button" onPress={() => setIsOccupationMenuOpen((current) => !current)} style={styles.roleSelect}>
+      <Pressable accessibilityRole="button" onPress={() => setIsOccupationMenuOpen((current) => !current)} style={[styles.roleSelect, hasValidationError("occupation") && styles.inputInvalid]}>
         <AppText color={occupation ? colors.text : colors.textMuted}>{isCustomOccupation ? "Otro" : occupation || "Selecciona una opción"}</AppText>
         <Svg height={20} viewBox="0 0 24 24" width={20} fill="none"><Path d="m7 10 5 5 5-5" stroke={colors.text} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} /></Svg>
       </Pressable>
       {isOccupationMenuOpen && <View style={styles.roleMenu}>
-        {occupationOptions.map((option) => <Pressable key={option} onPress={() => { setOccupation(option); setIsCustomOccupation(false); setIsOccupationMenuOpen(false); }} style={styles.roleMenuOption}><AppText>{option}</AppText></Pressable>)}
+        {occupationOptions.map((option) => <Pressable key={option} onPress={() => { setOccupation(option); clearValidationError("occupation"); setIsCustomOccupation(false); setIsOccupationMenuOpen(false); }} style={styles.roleMenuOption}><AppText>{option}</AppText></Pressable>)}
         <Pressable onPress={() => { setOccupation(""); setIsCustomOccupation(true); setIsOccupationMenuOpen(false); }} style={styles.roleMenuOption}><AppText>Otro</AppText></Pressable>
       </View>}
-      {isCustomOccupation && <TextInput autoFocus onChangeText={setOccupation} placeholder="Escribe tu ocupación o carrera" placeholderTextColor={colors.textMuted} style={[styles.input, styles.customRoleInput]} value={occupation} />}
+      {isCustomOccupation && <TextInput autoFocus onChangeText={(value) => { setOccupation(value); if (value.trim()) clearValidationError("occupation"); }} placeholder="Escribe tu ocupación o carrera" placeholderTextColor={colors.textMuted} style={[styles.input, styles.customRoleInput, hasValidationError("occupation") && styles.inputInvalid]} value={occupation} />}
+      {hasValidationError("occupation") && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Selecciona o escribe tu ocupación.</AppText>}
     </View>
-    <ChoiceRow large required label="Horas que tienes libres al día" onChange={handleAvailableHoursChange} options={[1, 2, 3, 4, 5, 6]} value={availableHours} />
-    <ChoiceRow large required isOptionDisabled={(option) => option > (availableHours ?? 0)} label="Horas que quieres dedicar a estudiar" onChange={setStudyHours} options={[1, 2, 3, 4, 5, 6]} value={studyHours} />
-    <ChoiceRow large required isOptionDisabled={(option) => option + (availableHours ?? 0) > DAILY_AWAKE_HOURS} label="Horas de trabajo al día" onChange={setWorkHours} options={[0, 2, 4, 6, 8, 10]} value={workHours} />
+    <ChoiceRow invalid={hasValidationError("availableHours")} large required label="Horas que tienes libres al día" onChange={(value) => { handleAvailableHoursChange(value); clearValidationError("availableHours"); }} options={[1, 2, 3, 4, 5, 6]} value={availableHours} />
+    <ChoiceRow invalid={hasValidationError("studyHours")} large required isOptionDisabled={(option) => option > (availableHours ?? 0)} label="Horas que quieres dedicar a estudiar" onChange={(value) => { setStudyHours(value); clearValidationError("studyHours"); }} options={[1, 2, 3, 4, 5, 6]} value={studyHours} />
+    <ChoiceRow invalid={hasValidationError("workHours")} large required isOptionDisabled={(option) => option + (availableHours ?? 0) > DAILY_AWAKE_HOURS} label="Horas de trabajo al día" onChange={(value) => { setWorkHours(value); clearValidationError("workHours"); }} options={[0, 2, 4, 6, 8, 10]} value={workHours} />
     <AppText color={colors.textSecondary} variant="caption" style={styles.hoursNote}>Tus horas de estudio se ajustan dentro de tu tiempo libre. Reservamos al menos 8 h para descanso.</AppText>
     <AppText style={styles.inputLabel}>Días disponibles</AppText>
-    <View style={styles.dayRow}>{days.map(([day, label]) => <Pressable key={day} onPress={() => toggleDay(day)} style={[styles.day, selectedDays.includes(day) && styles.dayActive]}><AppText color={selectedDays.includes(day) ? colors.white : colors.textSecondary} style={styles.dayText}>{label}</AppText></Pressable>)}</View>
+    <View style={[styles.dayRow, hasValidationError("days") && styles.dayRowInvalid]}>{days.map(([day, label]) => <Pressable key={day} onPress={() => { toggleDay(day); clearValidationError("days"); }} style={[styles.day, selectedDays.includes(day) && styles.dayActive]}><AppText color={selectedDays.includes(day) ? colors.white : colors.textSecondary} style={styles.dayText}>{label}</AppText></Pressable>)}</View>
+    {hasValidationError("days") && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Elige al menos un día disponible.</AppText>}
     <View>
       <AppText style={styles.inputLabel}>¿A qué hora normalmente empiezas?</AppText>
-      <Pressable accessibilityRole="button" onPress={() => setIsStartTimePickerVisible(true)} style={styles.timePickerButton}><AppText>{startTime}</AppText></Pressable>
-      <View style={styles.availabilitySummary}>
-        <AppText color={colors.textSecondary} variant="caption">Tu bloque disponible</AppText>
-        <AppText color={colors.primary} style={styles.availabilitySummaryValue}>{startTime} – {calculatedEndTime} · {availableHours} h</AppText>
-      </View>
+      <Pressable accessibilityRole="button" onPress={() => setIsStartTimePickerVisible(true)} style={[styles.timePickerButton, hasValidationError("startTime") && styles.inputInvalid]}><AppText>{startTime}</AppText></Pressable>
+      {hasValidationError("startTime") && <AppText color={colors.danger} variant="caption" style={styles.fieldError}>Elige una hora válida para tu bloque disponible.</AppText>}
     </View>
   </> : step === 1 ? <>
     <AppText variant="h2">Energía y carga</AppText>
     <AppText color={colors.textSecondary} style={styles.stepCopy}>1 es poca energía y 5 es tu mejor momento para concentrarte.</AppText>
-    <ChoiceRow large required label="Energía por la mañana" onChange={setMorningEnergy} options={[1, 2, 3, 4, 5]} value={morningEnergy} />
-    <ChoiceRow large required label="Energía por la tarde" onChange={setAfternoonEnergy} options={[1, 2, 3, 4, 5]} value={afternoonEnergy} />
-    <ChoiceRow large required label="Energía por la noche" onChange={setNightEnergy} options={[1, 2, 3, 4, 5]} value={nightEnergy} />
-    <ChoiceRow large required label="Carga que te resulta cómoda (%)" onChange={setTolerance} options={[50, 65, 80, 100]} value={tolerance} />
+    <ChoiceRow invalid={hasValidationError("morningEnergy")} large required label="Energía por la mañana" onChange={(value) => { setMorningEnergy(value); clearValidationError("morningEnergy"); }} options={[1, 2, 3, 4, 5]} value={morningEnergy} />
+    <ChoiceRow invalid={hasValidationError("afternoonEnergy")} large required label="Energía por la tarde" onChange={(value) => { setAfternoonEnergy(value); clearValidationError("afternoonEnergy"); }} options={[1, 2, 3, 4, 5]} value={afternoonEnergy} />
+    <ChoiceRow invalid={hasValidationError("nightEnergy")} large required label="Energía por la noche" onChange={(value) => { setNightEnergy(value); clearValidationError("nightEnergy"); }} options={[1, 2, 3, 4, 5]} value={nightEnergy} />
+    <View>
+      <ChoiceRow invalid={hasValidationError("tolerance")} large required label="¿Qué tanto de tu tiempo libre quieres usar para tareas?" onChange={(value) => { setTolerance(value); clearValidationError("tolerance"); }} options={[50, 65, 80, 100]} value={tolerance} />
+      <AppText color={colors.textSecondary} variant="caption" style={styles.toleranceHint}>Elige una carga cómoda para ti.</AppText>
+    </View>
   </> : <>
     <AppText variant="h2">Preferencias</AppText>
     <AppText color={colors.textSecondary} style={styles.stepCopy}>Elige lo que más se parezca a ti. Puedes seleccionar varias opciones donde aplique.</AppText>
-    <PreferenceSelect required label="Método de trabajo" onChange={setWorkMethod} options={workMethodOptions} value={workMethod} />
-    <PreferenceSelect required label="Estilo de aprendizaje" onChange={setLearningStyle} options={learningStyleOptions} value={learningStyle} />
-    <PreferenceSelect required label="Tus metas" multiple onChange={setGoals} options={goalOptions} value={goals} />
-    <PreferenceSelect required label="Actividades que disfrutas" multiple onChange={setActivities} options={activityOptions} value={activities} />
-    <PreferenceSelect required label="Distracciones frecuentes" multiple onChange={setDistractions} options={distractionOptions} value={distractions} />
+    <PreferenceSelect invalid={hasValidationError("workMethod")} required label="Método de trabajo" onChange={(value) => { setWorkMethod(value); if (value) clearValidationError("workMethod"); }} options={workMethodOptions} value={workMethod} />
+    <PreferenceSelect invalid={hasValidationError("learningStyle")} required label="Estilo de aprendizaje" onChange={(value) => { setLearningStyle(value); if (value) clearValidationError("learningStyle"); }} options={learningStyleOptions} value={learningStyle} />
+    <PreferenceSelect invalid={hasValidationError("goals")} required label="Tus metas" multiple onChange={(value) => { setGoals(value); if (value) clearValidationError("goals"); }} options={goalOptions} value={goals} />
+    <PreferenceSelect invalid={hasValidationError("activities")} required label="Actividades que disfrutas" multiple onChange={(value) => { setActivities(value); if (value) clearValidationError("activities"); }} options={activityOptions} value={activities} />
+    <PreferenceSelect invalid={hasValidationError("distractions")} required label="Distracciones frecuentes" multiple onChange={(value) => { setDistractions(value); if (value) clearValidationError("distractions"); }} options={distractionOptions} value={distractions} />
     <AppText color={colors.textSecondary} variant="caption" style={styles.note}>Los tiempos reales, estimaciones y cumplimiento se aprenderán automáticamente conforme uses PLENO.</AppText>
   </>;
 
-  return <Screen padded={false} safeAreaColor={colors.accent}>
+  return <Screen padded={false} safeAreaColor={colors.primary}>
     <View style={styles.screen}>
       <View style={styles.hero}>
-        <AppText color={colors.text} style={styles.stepLabel}>PASO {step + 1} DE {steps.length}</AppText>
-        <AppText color={colors.text} variant="h1">{steps[step].title}</AppText>
-        <AppText color={colors.text} style={styles.heroDescription}>{steps[step].description}</AppText>
+        <AppText color={colors.white} style={styles.stepLabel}>PASO {step + 1} DE {steps.length}</AppText>
+        <AppText color={colors.white} variant="h1">{steps[step].title}</AppText>
+        <AppText color={colors.white} style={styles.heroDescription}>{steps[step].description}</AppText>
         <View style={styles.stepper}>
           <View style={styles.stepLine} />
           <View style={[styles.stepLineComplete, { width: `${(step / (steps.length - 1)) * 66.66}%` }]} />
           {steps.map((item, index) => (
             <Pressable accessibilityLabel={`Ir a ${item.title}`} key={item.title} onPress={() => setStep(index)} style={styles.stepProgressItem}>
               <View style={[styles.stepDot, index === step && styles.stepDotActive, index < step && styles.stepDotComplete]}>
-                <AppText color={index <= step ? colors.white : colors.textMuted} style={styles.stepNumber}>{index + 1}</AppText>
+                <AppText color={index <= step ? colors.primary : colors.white} style={styles.stepNumber}>{index + 1}</AppText>
               </View>
-              <AppText color={index <= step ? colors.primary : colors.textMuted} numberOfLines={1} style={styles.stepCategory}>{item.title}</AppText>
+              <AppText color={index <= step ? colors.white : "rgba(255, 255, 255, 0.64)"} numberOfLines={1} style={styles.stepCategory}>{item.title}</AppText>
             </Pressable>
           ))}
         </View>
@@ -297,6 +313,7 @@ export default function PreferencesScreen() {
         onDismiss={() => setIsStartTimePickerVisible(false)}
         onValueChange={(_, date) => {
           setStartTime(formatPickerTime(date));
+          clearValidationError("startTime");
           setIsStartTimePickerVisible(false);
         }}
         positiveButton={{ label: "Listo" }}
@@ -309,27 +326,30 @@ export default function PreferencesScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
-  hero: { backgroundColor: colors.accent, paddingBottom: spacing.xl, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
+  hero: { backgroundColor: colors.primary, paddingBottom: spacing.xl, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
   stepLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 1.1, opacity: 0.66 },
   heroDescription: { lineHeight: 22, marginTop: spacing.sm, maxWidth: 310 },
   stepper: { flexDirection: "row", marginTop: spacing.lg, position: "relative", width: "100%" },
-  stepLine: { backgroundColor: colors.white, height: 2, left: "16.67%", position: "absolute", right: "16.67%", top: 14 },
-  stepLineComplete: { backgroundColor: colors.primary, height: 2, left: "16.67%", position: "absolute", top: 14 },
+  stepLine: { backgroundColor: "#7AC0FA", height: 2, left: "16.67%", position: "absolute", right: "16.67%", top: 14 },
+  stepLineComplete: { backgroundColor: colors.white, height: 2, left: "16.67%", position: "absolute", top: 14 },
   stepProgressItem: { alignItems: "center", flex: 1 },
-  stepDot: { alignItems: "center", backgroundColor: colors.white, borderRadius: radius.full, height: 29, justifyContent: "center", width: 29, zIndex: 1 },
-  stepDotActive: { backgroundColor: colors.primary, transform: [{ scale: 1.12 }] },
-  stepDotComplete: { backgroundColor: colors.primary },
+  stepDot: { alignItems: "center", backgroundColor: "#7AC0FA", borderRadius: radius.full, height: 29, justifyContent: "center", width: 29, zIndex: 1 },
+  stepDotActive: { backgroundColor: colors.white, transform: [{ scale: 1.12 }] },
+  stepDotComplete: { backgroundColor: colors.white },
   stepNumber: { fontSize: 12, fontWeight: "800" },
   stepCategory: { fontSize: 11, fontWeight: "700", marginTop: spacing.xs, textAlign: "center" },
   form: { gap: spacing.md, paddingHorizontal: spacing.xl, paddingVertical: spacing.xl },
   input: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, color: colors.text, fontSize: 15, minHeight: 50, paddingHorizontal: spacing.md },
-  inputLabel: { fontSize: 13, fontWeight: "600", marginBottom: spacing.xs },
+  inputInvalid: { borderColor: colors.danger },
+  fieldError: { marginTop: spacing.xs },
+  inputLabel: { fontSize: 15, fontWeight: "600", marginBottom: spacing.xs },
   roleSelect: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 50, paddingHorizontal: spacing.md },
   roleMenu: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, marginTop: spacing.xs, overflow: "hidden" },
   roleMenuOption: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 46, justifyContent: "center", paddingHorizontal: spacing.md },
   customRoleInput: { marginTop: spacing.sm },
   choiceGroup: { marginTop: spacing.xs },
   choiceRow: { flexDirection: "row", justifyContent: "space-between" },
+  choiceRowInvalid: { borderColor: colors.danger, borderRadius: radius.md, borderWidth: 1, padding: spacing.xs },
   scaleChoiceRow: { marginTop: spacing.sm, minHeight: 70 },
   scaleChoiceOption: { alignItems: "center", flex: 1, gap: spacing.sm },
   choice: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.full, borderWidth: 1, height: 42, justifyContent: "center", width: 42 },
@@ -343,22 +363,22 @@ const styles = StyleSheet.create({
   preferenceSelectGroup: { marginTop: spacing.xs },
   preferenceSelectHint: { marginBottom: spacing.xs, marginTop: -2 },
   preferenceSelectMenu: { backgroundColor: colors.white, borderRadius: radius.md, overflow: "hidden" },
+  preferenceSelectMenuInvalid: { borderColor: colors.danger, borderWidth: 1 },
   preferenceSelectOption: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", justifyContent: "space-between", minHeight: 52, paddingHorizontal: spacing.md },
-  preferenceSelectLabel: { fontSize: 18, fontWeight: "700" },
   preferenceSelectOptionText: { color: colors.textSecondary, flexShrink: 1, fontSize: 15, fontWeight: "400" },
   preferenceSelectMark: { alignItems: "center", borderColor: "#C9CED6", borderRadius: radius.full, borderWidth: 2, height: 22, justifyContent: "center", width: 22 },
   preferenceSelectMarkActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   hoursNote: { lineHeight: 18, marginTop: -spacing.xs },
   dayRow: { flexDirection: "row", gap: 4 },
+  dayRowInvalid: { borderColor: colors.danger, borderRadius: radius.md, borderWidth: 1, padding: spacing.xs },
   day: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flex: 1, minHeight: 41, justifyContent: "center" },
   dayActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   dayText: { fontSize: 11, fontWeight: "700" },
   timePickerButton: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, justifyContent: "center", minHeight: 50, paddingHorizontal: spacing.md },
-  availabilitySummary: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.sm, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  availabilitySummaryValue: { fontSize: 14, fontWeight: "700", marginTop: 2 },
   stepCopy: { lineHeight: 21 },
+  toleranceHint: { marginTop: spacing.xs },
   note: { lineHeight: 18, marginTop: spacing.sm },
-  actions: { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.md, padding: spacing.xl },
-  backButton: { flex: 0.7 },
-  nextButton: { flex: 1 },
+  actions: { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.lg },
+  backButton: { flex: 0.55, paddingHorizontal: spacing.sm },
+  nextButton: { flex: 1.45, paddingHorizontal: spacing.sm },
 });

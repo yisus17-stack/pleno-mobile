@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     zIndex: 3,
   },
-  heroGreeting: { marginTop: spacing.xl },
+  heroGreeting: { marginTop: spacing.md },
   heroTitle: { fontSize: 31, fontWeight: "700" },
   heroSubtitle: { fontSize: 17, lineHeight: 24, marginTop: spacing.sm },
   body: { paddingHorizontal: spacing.xl },

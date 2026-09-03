@@ -2,9 +2,10 @@ import { AiRefreshResult } from "@/features/planner/api";
 import { colors } from "@/theme";
 
 export type TaskStatus = "todo" | "in_progress" | "completed";
+type BoardColumnStatus = TaskStatus | "overdue";
 
 export const boardColumns: Array<{
-  status: TaskStatus;
+  status: BoardColumnStatus;
   title: string;
   color: string;
   textColor: string;
@@ -15,6 +16,7 @@ export const boardColumns: Array<{
   { status: "todo", title: "Pendientes", color: colors.accent, textColor: colors.text, emptyMessage: "No tienes tareas pendientes.", actionLabel: "Empezar tarea", nextStatus: "in_progress" },
   { status: "in_progress", title: "En progreso", color: colors.primary, textColor: colors.white, emptyMessage: "Elige una tarea para comenzar.", actionLabel: "Marcar completada", nextStatus: "completed" },
   { status: "completed", title: "Completadas", color: "#2476B9", textColor: colors.white, emptyMessage: "Tus avances aparecerán aquí.", actionLabel: "Reabrir tarea", nextStatus: "todo" },
+  { status: "overdue", title: "Vencidas", color: colors.danger, textColor: colors.white, emptyMessage: "No tienes tareas vencidas.", actionLabel: "Marcar completada", nextStatus: "completed" },
 ];
 
 export function getDueLabel(dueDate?: number) {
@@ -52,6 +54,44 @@ export function keepActionableAiResult(result: AiRefreshResult, actionableTaskId
 export function formatPlanDate(date: string) {
   const parsedDate = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsedDate.getTime()) ? date : parsedDate.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
+}
+
+export function getPlanWeekDates(weekStart?: string, fallbackDates: string[] = []) {
+  if (!weekStart) return fallbackDates;
+
+  const start = new Date(`${weekStart}T12:00:00`);
+  if (Number.isNaN(start.getTime())) return fallbackDates;
+
+  return Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  });
+}
+
+export function getPlanDayLabel(date: string) {
+  const parsedDate = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return date;
+
+  const label = parsedDate.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", "");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+}
+
+export function getPlanDayNumber(date: string) {
+  const parsedDate = new Date(`${date}T12:00:00`);
+  return Number.isNaN(parsedDate.getTime()) ? "" : String(parsedDate.getDate());
+}
+
+export function isTodayPlanDate(date: string) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return date === todayKey;
+}
+
+export function isPastPlanDate(date: string) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return date < todayKey;
 }
 
 export function getDeadlineRiskLabel(risk?: string) {

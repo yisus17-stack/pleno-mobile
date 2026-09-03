@@ -1,5 +1,5 @@
 import { PropsWithChildren, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -46,7 +46,7 @@ const toastColors: Record<ToastType, { accent: string }> = {
   warning: { accent: colors.warning },
 };
 
-function ToastIcon({ size = 20, type }: { size?: number; type: ToastType }) {
+function ToastIcon({ size = 29, type }: { size?: number; type: ToastType }) {
   if (type === "success") {
     return <CheckIcon height={size} width={size} />;
   }
@@ -68,10 +68,8 @@ export function FeedbackProvider({ children }: PropsWithChildren) {
   const [dialog, setDialog] = useState<DialogMessage | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastTranslateY = useRef(new Animated.Value(-72)).current;
-  const toastProgress = useRef(new Animated.Value(0)).current;
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
 
   const hideToast = useCallback(() => {
     Animated.parallel([
@@ -84,19 +82,17 @@ export function FeedbackProvider({ children }: PropsWithChildren) {
     if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
     toastOpacity.setValue(0);
     toastTranslateY.setValue(-72);
-    toastProgress.setValue(0);
     setToast(message);
 
     requestAnimationFrame(() => {
       Animated.parallel([
         Animated.timing(toastOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
         Animated.spring(toastTranslateY, { damping: 10, mass: 0.85, stiffness: 230, toValue: 0, useNativeDriver: true }),
-        Animated.timing(toastProgress, { toValue: -(width + spacing.xl * 2), duration: 3600, useNativeDriver: true }),
       ]).start();
     });
 
     dismissTimeoutRef.current = setTimeout(hideToast, 3600);
-  }, [hideToast, toastOpacity, toastProgress, toastTranslateY, width]);
+  }, [hideToast, toastOpacity, toastTranslateY]);
 
   useEffect(() => () => {
     if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
@@ -116,7 +112,6 @@ export function FeedbackProvider({ children }: PropsWithChildren) {
         </View>
           <Pressable accessibilityLabel="Cerrar mensaje" onPress={hideToast} style={styles.toastClose}><ToastCloseIcon /></Pressable>
         </View>
-        <View style={styles.toastProgressTrack}><Animated.View style={[styles.toastProgress, { backgroundColor: toastColors[toast.type].accent, transform: [{ translateX: toastProgress }] }]} /></View>
       </Animated.View>}
       {loading && <View style={styles.loadingOverlay}>
         <View style={styles.loadingCard}>
@@ -164,8 +159,6 @@ const styles = StyleSheet.create({
   toastTitle: { fontSize: 15, fontWeight: "700" },
   toastMessage: { lineHeight: 17, marginTop: 3 },
   toastClose: { alignItems: "center", height: 32, justifyContent: "center", marginLeft: spacing.sm, width: 32 },
-  toastProgressTrack: { backgroundColor: colors.surfaceSecondary, height: 3, overflow: "hidden" },
-  toastProgress: { height: "100%", width: "100%" },
   loadingOverlay: { alignItems: "center", backgroundColor: "rgba(15, 23, 42, 0.38)", bottom: 0, justifyContent: "center", left: 0, position: "absolute", right: 0, top: 0, zIndex: 40 },
   loadingCard: { alignItems: "center", backgroundColor: colors.white, borderRadius: 4, boxShadow: "0px 18px 132px 44px rgba(15, 23, 42, 0.28)", elevation: 26, marginHorizontal: spacing.xxl, paddingHorizontal: spacing.xxl, paddingVertical: spacing.xxl },
   loadingTitle: { fontSize: 17, fontWeight: "700", marginTop: spacing.lg, textAlign: "center" },

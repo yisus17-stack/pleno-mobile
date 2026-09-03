@@ -76,7 +76,7 @@ export function ManualTaskSheet({
     <Modal animationType="none" onRequestClose={onClose} transparent visible={isVisible}>
       <Animated.View style={[styles.modalOverlay, { opacity: createSheetBackdropOpacity }]}>
         <Pressable accessibilityLabel="Cerrar creación de tarea" onPress={onClose} style={styles.modalBackdrop} />
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} pointerEvents="box-none" style={styles.modalKeyboardContainer}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} pointerEvents="box-none" style={styles.modalKeyboardContainer}>
           <Animated.View style={[styles.createTaskSheet, { transform: [{ translateY: createSheetTranslateY }] }]}>
             <View {...panHandlers} style={styles.sheetHandleTouchArea}>
               <View style={styles.sheetHandle} />

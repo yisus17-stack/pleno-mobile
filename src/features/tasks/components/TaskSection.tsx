@@ -43,7 +43,7 @@ type TaskSectionProps = {
 };
 
 export function TaskSection({ expandedTaskId, isExpanded, onOpenMenu, onToggleExpanded, onToggleInstructions, onToggleTask, section }: TaskSectionProps) {
-  const controlColor = section.title === "Asignadas" ? colors.text : section.textColor;
+  const titleColor = section.title === "Vencidas" ? colors.danger : colors.text;
 
   return <View style={styles.taskSection}>
     <Pressable
@@ -51,16 +51,17 @@ export function TaskSection({ expandedTaskId, isExpanded, onOpenMenu, onToggleEx
       onPress={onToggleExpanded}
       style={({ pressed }) => [
         styles.sectionHeader,
-        { backgroundColor: section.color },
         !isExpanded && styles.sectionHeaderCollapsed,
         pressed && styles.sectionHeaderPressed,
       ]}
     >
-      <AppText color={section.textColor} variant="h3">{section.title}</AppText>
+      <AppText color={titleColor} variant="h3" style={styles.sectionTitle}>{section.title}</AppText>
       <View style={styles.sectionHeaderRight}>
-        <AppText color={controlColor} style={styles.sectionTaskTotal}>{section.tasks.length} {section.tasks.length === 1 ? "tarea" : "tareas"}</AppText>
+        <View style={styles.sectionCount}>
+          <AppText color={colors.textSecondary} style={styles.sectionCountText}>{section.tasks.length}</AppText>
+        </View>
         <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-          <Path d={isExpanded ? "m7 14 5-5 5 5" : "m7 10 5 5 5-5"} stroke={controlColor} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={isExpanded ? "m7 14 5-5 5 5" : "m7 10 5 5 5-5"} stroke={colors.textSecondary} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
       </View>
     </Pressable>
@@ -88,18 +89,22 @@ export function TaskSection({ expandedTaskId, isExpanded, onOpenMenu, onToggleEx
             </Pressable>}
           </View>
           <View style={styles.taskActions}>
-            <View style={styles.taskSourceRow}>
-              <View style={[styles.sourceBadge, { backgroundColor: source.background }]}><AppText color={source.color} style={styles.sourceBadgeText}>{source.label}</AppText></View>
+            <View style={styles.taskControls}>
               {task.source !== "google_classroom" && <Pressable accessibilityLabel={`Opciones de ${task.title}`} accessibilityRole="button" onPress={() => onOpenMenu(task._id)} style={styles.taskMenuTrigger}>
                 <Svg width={18} height={18} viewBox="0 0 24 24" fill="none"><Circle cx={12} cy={5} r={1.35} fill={colors.textSecondary} /><Circle cx={12} cy={12} r={1.35} fill={colors.textSecondary} /><Circle cx={12} cy={19} r={1.35} fill={colors.textSecondary} /></Svg>
               </Pressable>}
+              <Pressable accessibilityLabel={isCompleted ? "Marcar como pendiente" : "Marcar como completada"} accessibilityRole="checkbox" accessibilityState={{ checked: isCompleted }} onPress={() => onToggleTask(task)} style={styles.taskCheckbox}><TaskCheckIcon completed={isCompleted} /></Pressable>
             </View>
-            <Pressable accessibilityLabel={isCompleted ? "Marcar como pendiente" : "Marcar como completada"} accessibilityRole="checkbox" accessibilityState={{ checked: isCompleted }} onPress={() => onToggleTask(task)} style={styles.taskCheckbox}><TaskCheckIcon completed={isCompleted} /></Pressable>
-            <View style={[styles.priorityPill, { backgroundColor: priority.background }]}><AppText color={priority.color} style={styles.priorityText}>{priority.label}</AppText></View>
+            <View style={styles.taskSourceRow}>
+              <View style={[styles.sourceBadge, { backgroundColor: source.background }]}><AppText color={source.color} style={styles.sourceBadgeText}>{source.label}</AppText></View>
+            </View>
           </View>
         </View>
         <View style={styles.taskFooter}>
-          <AppText color={isOverdue ? colors.danger : colors.textSecondary} variant="caption">{isOverdue ? "Vencida" : getStatusLabel(task.status)}</AppText>
+          <View style={styles.taskFooterStatus}>
+            <AppText color={isOverdue ? colors.danger : colors.textSecondary} variant="caption">{isOverdue ? "Vencida" : getStatusLabel(task.status)}</AppText>
+            <View style={[styles.priorityPill, { backgroundColor: priority.background }]}><AppText color={priority.color} style={styles.priorityText}>{priority.label}</AppText></View>
+          </View>
           <View style={styles.dueDetails}>
             <AppText color={task.dueDate ? priority.color : colors.textMuted} variant="caption" style={styles.dueDate}>{getDueLabel(task.dueDate)}</AppText>
             {getDueTime(task.dueDate) && <AppText color={colors.textSecondary} variant="caption" style={styles.dueTime}>{getDueTime(task.dueDate)}</AppText>}

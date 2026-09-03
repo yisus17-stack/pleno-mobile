@@ -7,8 +7,8 @@ import { Screen } from "@/components/layout";
 import { AppText, Card } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useFeedback } from "@/components/feedback";
-import { AiRefreshResult, refreshTasksWithAi } from "@/features/planner/api";
-import { boardColumns, formatPlanDate, getDueLabel, isOverdueTask, keepActionableAiResult, TaskStatus } from "@/features/planner/boardUtils";
+import { AiRefreshResult, getAiRefreshErrorFeedback, refreshTasksWithAi } from "@/features/planner/api";
+import { boardColumns, formatPlanDate, getDueLabel, getPlanWeekDates, isOverdueTask, isPastPlanDate, isTodayPlanDate, keepActionableAiResult, TaskStatus } from "@/features/planner/boardUtils";
 import { BoardHeader, BoardView } from "@/features/planner/components/BoardHeader";
 import { BoardTabs } from "@/features/planner/components/BoardTabs";
 import { CriticalPathJourney } from "@/features/planner/components/CriticalPathJourney";
@@ -65,6 +65,22 @@ function getAiPriorityLabel(priority?: "low" | "medium" | "high") {
   return "sin definir";
 }
 
+function getPlanInsight(result: AiRefreshResult) {
+  if (result.summary?.trim()) return result.summary.trim();
+
+  const plannedMinutes = result.totalPlannedMinutes ?? 0;
+  const criticalTasks = result.criticalTaskIds.length;
+  const unscheduledMinutes = result.unscheduledMinutes ?? 0;
+
+  if (unscheduledMinutes > 0) {
+    return `La IA organizó ${plannedMinutes} min y dejó ${unscheduledMinutes} min sin programar para esta semana.`;
+  }
+
+  return criticalTasks > 0
+    ? `La IA organizó ${plannedMinutes} min para esta semana y detectó ${criticalTasks} ${criticalTasks === 1 ? "tarea crítica" : "tareas críticas"}.`
+    : `La IA organizó ${plannedMinutes} min para que avances con calma esta semana.`;
+}
+
 function restoreAiResult(planData: StoredPlan, tasks: BoardTask[]): AiRefreshResult {
   const taskById = new Map(tasks.map((task) => [task._id, task]));
   const minutesByTask = new Map<string, number>();
@@ -99,6 +115,7 @@ function restoreAiResult(planData: StoredPlan, tasks: BoardTask[]): AiRefreshRes
     }),
     reusedTasks: 0,
     totalPlannedMinutes: planData.plan.totalPlannedMinutes,
+    unscheduledMinutes: planData.plan.unscheduledMinutes,
     unscheduledTaskIds: planData.plan.unscheduledTaskIds ?? [],
     warnings: planData.plan.unscheduledMinutes ? ["Hay tiempo pendiente por acomodar."] : [],
     weekEnd: planData.plan.weekEnd,
@@ -113,20 +130,24 @@ export default function BoardScreen() {
   const tasks = useQuery(api.tasks.getTasksByUser, user ? { userId: user.id } : "skip");
   const latestStudyPlan = useQuery(tasksApi.getLatestStudyPlan, user ? { userId: user.id } : "skip") as StoredPlan | null | undefined;
   const updateTask = useMutation(api.tasks.updateTask);
-  const columnWidth = Math.max(288, width - spacing.xl * 2);
+  const columnWidth = Math.min(420, Math.max(288, width - spacing.xl * 2));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<AiRefreshResult | null>(null);
   const [activeView, setActiveView] = useState<BoardView>("flow");
-  const [selectedPlanDate, setSelectedPlanDate] = useState<string | null>(null);
+  const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
   const actionableTaskIds = useMemo(() => new Set(
     (tasks ?? [])
       .filter((task) => task.status !== "completed" && !isOverdueTask(task.dueDate))
       .map((task) => task._id)
   ), [tasks]);
-  const planDates = aiResult ? [...new Set(aiResult.blocks.map((block) => block.date))] : [];
-  const visiblePlanBlocks = aiResult
-    ? aiResult.blocks.filter((block) => !selectedPlanDate || block.date === selectedPlanDate)
-    : [];
+  const planDates = useMemo(() => {
+    if (!aiResult) return [];
+
+    const allPlanDates = getPlanWeekDates(aiResult.weekStart, [...new Set(aiResult.blocks.map((block) => block.date))]);
+    const currentAndUpcomingDates = allPlanDates.filter((date) => !isPastPlanDate(date));
+    return currentAndUpcomingDates.length > 0 ? currentAndUpcomingDates : allPlanDates;
+  }, [aiResult]);
+  const planInsight = aiResult ? getPlanInsight(aiResult) : "";
 
   useEffect(() => {
     if (!latestStudyPlan || !tasks) return;
@@ -136,11 +157,7 @@ export default function BoardScreen() {
       actionableTaskIds
     );
     setAiResult(restoredResult);
-    setSelectedPlanDate((currentDate) =>
-      currentDate && restoredResult.blocks.some((block) => block.date === currentDate)
-        ? currentDate
-        : restoredResult.blocks[0]?.date ?? null
-    );
+    setIsPlanSummaryExpanded(false);
   }, [actionableTaskIds, latestStudyPlan, tasks]);
 
   const refreshWithAi = async () => {
@@ -156,11 +173,12 @@ export default function BoardScreen() {
       const result = await refreshTasksWithAi();
       const actionableResult = keepActionableAiResult(result, actionableTaskIds);
       setAiResult(actionableResult);
-      setSelectedPlanDate(actionableResult.blocks[0]?.date ?? null);
+      setIsPlanSummaryExpanded(false);
       setActiveView("critical");
       showToast({ type: "success", title: "Tu plan está listo", message: "Revisa tu ruta crítica y el plan semanal." });
     } catch (error) {
-      showToast({ type: "error", title: "No se pudo actualizar con IA", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
+      const feedback = getAiRefreshErrorFeedback(error);
+      showToast({ type: "error", ...feedback });
     } finally {
       setIsAnalyzing(false);
       hideLoading();
@@ -198,18 +216,22 @@ export default function BoardScreen() {
           showsHorizontalScrollIndicator={false}
           snapToInterval={columnWidth + spacing.md}
           snapToAlignment="start"
+          style={styles.flowBoard}
         >
           {boardColumns.map((column) => {
-            const columnTasks = tasks.filter((task) => task.status === column.status && (column.status === "completed" || !isOverdueTask(task.dueDate)));
+            const columnTasks = tasks.filter((task) => {
+              if (column.status === "overdue") return task.status !== "completed" && isOverdueTask(task.dueDate);
+              return task.status === column.status && (column.status === "completed" || !isOverdueTask(task.dueDate));
+            });
 
             return (
               <View key={column.status} style={[styles.column, { width: columnWidth }]}>
-                <View style={[styles.columnHeader, { backgroundColor: column.color }]}>
-                  <AppText color={column.textColor} variant="h3">
+                <View style={styles.columnHeader}>
+                  <AppText color={column.status === "overdue" ? colors.danger : colors.text} variant="h3" style={styles.columnTitle}>
                     {column.title}
                   </AppText>
                   <View style={styles.columnCount}>
-                    <AppText color={column.textColor} style={styles.columnCountText}>
+                    <AppText color={colors.textSecondary} style={styles.columnCountText}>
                       {columnTasks.length}
                     </AppText>
                   </View>
@@ -266,12 +288,13 @@ export default function BoardScreen() {
                     })
                   )}
                 </ScrollView>
+
               </View>
             );
           })}
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={styles.aiContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.aiContent} showsVerticalScrollIndicator={false} style={styles.aiScroll}>
           {!aiResult ? (
             <View style={styles.aiEmptyState}>
               <AppText style={styles.aiEmptyTitle}>Aún no hay un análisis</AppText>
@@ -302,61 +325,77 @@ export default function BoardScreen() {
             </>
           ) : (
             <>
-              <View style={styles.aiSectionIntro}>
+              <View style={[styles.aiSectionIntro, styles.planSectionIntro]}>
                 <AppText variant="h2">Plan semanal</AppText>
                 <AppText color={colors.textSecondary} style={styles.aiSectionDescription}>
                   {aiResult.weekStart && aiResult.weekEnd ? `${formatPlanDate(aiResult.weekStart)} — ${formatPlanDate(aiResult.weekEnd)}` : "Tu distribución de estudio recomendada."}
                 </AppText>
               </View>
-              <View style={styles.planStats}>
-                <View style={styles.planStat}>
-                  <AppText color={colors.primary} style={styles.planStatValue}>{aiResult.totalPlannedMinutes ?? 0}</AppText>
-                  <AppText color={colors.textSecondary} variant="caption">min planeados</AppText>
-                </View>
-                <View style={styles.planStatDivider} />
-                <View style={styles.planStat}>
-                  <AppText color={aiResult.unscheduledTaskIds.length > 0 ? colors.danger : colors.success} style={styles.planStatValue}>{aiResult.unscheduledTaskIds.length}</AppText>
-                  <AppText color={colors.textSecondary} variant="caption">por acomodar</AppText>
-                </View>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.planDateTabs}>
-                {planDates.map((date) => {
-                  const dateParts = formatPlanDate(date).split(" ");
-                  const isSelected = selectedPlanDate === date;
-                  return (
-                    <Pressable key={date} onPress={() => setSelectedPlanDate(date)} style={[styles.planDateTab, isSelected && styles.planDateTabActive]}>
-                      <AppText color={isSelected ? colors.white : colors.textSecondary} variant="caption" style={styles.planDateWeekday}>{dateParts[0]}</AppText>
-                      <AppText color={isSelected ? colors.white : colors.text} style={styles.planDateNumber}>{dateParts[1] ?? ""}</AppText>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              {visiblePlanBlocks.map((block) => {
-                const localTask = tasks.find((task) => task._id === block.taskId);
-                return (
-                  <Card key={`${block.taskId}-${block.date}-${block.startTime}`} style={styles.planBlockCard}>
-                    <AppText color={colors.primary} variant="caption" style={styles.planBlockDate}>{formatPlanDate(block.date)}</AppText>
-                    <View style={styles.planBlockRow}>
-                      <View style={styles.planBlockTime}>
-                        <AppText color={colors.primary} style={styles.planBlockTimeText}>{block.startTime}</AppText>
-                        <AppText color={colors.textSecondary} variant="caption">{block.endTime}</AppText>
-                      </View>
-                      <View style={styles.planBlockCopy}>
-                        <AppText style={styles.planBlockTitle}>{localTask?.title || "Tarea programada"}</AppText>
-                        <AppText color={colors.textSecondary} variant="caption" style={styles.planBlockReason}>
-                          {block.plannedMinutes} min{block.reason ? ` · ${block.reason}` : ""}
-                        </AppText>
-                      </View>
-                    </View>
-                  </Card>
-                );
-              })}
-              {visiblePlanBlocks.length === 0 && (
-                <View style={styles.aiEmptyState}>
-                  <AppText style={styles.aiEmptyTitle}>Aún no hay bloques para esta semana</AppText>
-                  <AppText color={colors.textSecondary} style={styles.aiEmptyText}>La IA no pudo distribuir tareas con la información disponible.</AppText>
+              {!!planInsight && (
+                <View style={styles.planInsight}>
+                  <AppText color={colors.primary} style={styles.planInsightIcon}>✦</AppText>
+                  <View style={styles.planInsightCopy}>
+                    <AppText color={colors.textSecondary} numberOfLines={isPlanSummaryExpanded ? undefined : 2} style={styles.planInsightText}>{planInsight}</AppText>
+                    {planInsight.length > 120 && (
+                      <Pressable onPress={() => setIsPlanSummaryExpanded((isExpanded) => !isExpanded)}>
+                        <AppText color={colors.primary} variant="caption" style={styles.planInsightToggle}>{isPlanSummaryExpanded ? "Ver menos" : "Ver más"}</AppText>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
               )}
+              <View style={styles.planSummary}>
+                <AppText color={colors.textSecondary} style={styles.planSummaryText}>{aiResult.totalPlannedMinutes ?? 0} min programados</AppText>
+                <View style={styles.planSummaryDot} />
+                <AppText color={colors.textSecondary} style={styles.planSummaryText}>{aiResult.unscheduledMinutes ?? 0} min sin programar</AppText>
+              </View>
+              <View style={styles.weeklyPlan}>
+                {planDates.map((date) => {
+                  const dayBlocks = aiResult.blocks.filter((block) => block.date === date);
+                  const isToday = isTodayPlanDate(date);
+                  const dayLabel = formatPlanDate(date);
+
+                  return (
+                    <View key={date} style={styles.weekDaySection}>
+                      <View style={styles.weekDayHeader}>
+                        <View style={[styles.weekDayMarker, isToday && styles.weekDayMarkerToday]} />
+                        <AppText color={isToday ? colors.primary : colors.text} numberOfLines={1} style={styles.weekDayTitle}>{`${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)}`}</AppText>
+                        <View style={styles.weekDayCount}>
+                          <AppText color={colors.textSecondary} style={styles.weekDayCountText}>{dayBlocks.length}</AppText>
+                        </View>
+                        {isToday && <AppText color={colors.primary} variant="caption" style={styles.weekDayTodayLabel}>Hoy</AppText>}
+                      </View>
+                      {dayBlocks.length > 0 ? (
+                        <View style={styles.weekDayBlocks}>
+                          {dayBlocks.map((block) => {
+                            const localTask = tasks.find((task) => task._id === block.taskId);
+                            return (
+                              <Card key={`${block.taskId}-${block.date}-${block.startTime}`} style={styles.planBlockCard}>
+                                <View style={styles.planBlockRow}>
+                                  <View style={styles.planBlockTime}>
+                                    <AppText color={colors.primary} style={styles.planBlockTimeText}>{block.startTime}</AppText>
+                                    <AppText color={colors.textSecondary} variant="caption">{block.endTime}</AppText>
+                                  </View>
+                                  <View style={styles.planBlockCopy}>
+                                    <AppText style={styles.planBlockTitle}>{localTask?.title || "Tarea programada"}</AppText>
+                                    <AppText color={colors.textSecondary} variant="caption" style={styles.planBlockReason}>
+                                      {block.plannedMinutes} min{block.reason ? ` · ${block.reason}` : ""}
+                                    </AppText>
+                                  </View>
+                                </View>
+                              </Card>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <View style={styles.weekDayEmpty}>
+                          <AppText color={colors.textMuted} variant="caption">Sin bloques programados</AppText>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
               {aiResult.warnings.map((warning) => (
                 <View key={warning} style={styles.planWarning}>
                   <AppText color={colors.warning} variant="caption">{warning}</AppText>

@@ -35,11 +35,28 @@ export type AiRefreshResult = {
   weekStart?: string;
   weekEnd?: string;
   totalPlannedMinutes?: number;
+  unscheduledMinutes?: number;
   unscheduledTaskIds: string[];
   blocks: StudyBlock[];
   warnings: string[];
   insights: AiTaskInsight[];
 };
+
+export function getAiRefreshErrorFeedback(error: unknown) {
+  const technicalMessage = error instanceof Error ? error.message.toLocaleLowerCase("en-US") : "";
+
+  if (technicalMessage.includes("sesion") || technicalMessage.includes("session") || technicalMessage.includes("token")) {
+    return {
+      title: "Tu sesión ya no está disponible",
+      message: "Inicia sesión de nuevo para poder actualizar tu plan.",
+    };
+  }
+
+  return {
+    title: "El agente de IA no está disponible",
+    message: "No pudimos organizar tu plan en este momento. Inténtalo de nuevo en unos minutos.",
+  };
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,7 +76,9 @@ function getStringArray(value: unknown) {
 
 function getResponseData(value: unknown) {
   if (!isRecord(value)) return {};
-  return isRecord(value.data) ? value.data : value;
+  if (isRecord(value.data)) return value.data;
+  if (isRecord(value.payload)) return value.payload;
+  return value;
 }
 
 function getApiUrl() {
@@ -71,10 +90,11 @@ function getApiUrl() {
 function parseAiRefreshResponse(payload: unknown): AiRefreshResult {
   if (!isRecord(payload)) throw new Error("La API devolvio una respuesta invalida.");
 
-  const analysis = isRecord(payload.analysis) ? payload.analysis : {};
+  const responseData = getResponseData(payload);
+  const analysis = isRecord(responseData.analysis) ? responseData.analysis : responseData;
   const batchAnalysis = isRecord(analysis.batchAnalysis) ? analysis.batchAnalysis : {};
-  const criticalPath = getResponseData(payload.criticalPath);
-  const plan = getResponseData(payload.plan);
+  const criticalPath = getResponseData(responseData.criticalPath);
+  const plan = getResponseData(responseData.plan);
   const rawInsights = Array.isArray(analysis.tasks) ? analysis.tasks : [];
   const insights = rawInsights.flatMap((item) => {
     if (!isRecord(item)) return [];
@@ -121,13 +141,14 @@ function parseAiRefreshResponse(payload: unknown): AiRefreshResult {
   return {
     analyzedTasks: getNumber(analysis.analyzedTasks) ?? 0,
     reusedTasks: getNumber(analysis.reusedTasks) ?? 0,
-    summary: getString(batchAnalysis.summary),
+    summary: getString(batchAnalysis.summary) ?? getString(batchAnalysis.resumen) ?? getString(analysis.summary),
     workloadRisk: getString(batchAnalysis.workloadRisk),
     criticalTaskIds: getStringArray(criticalPath.criticalTaskIds),
     criticalTasks,
     weekStart: getString(plan.weekStart),
     weekEnd: getString(plan.weekEnd),
     totalPlannedMinutes: getNumber(plan.totalPlannedMinutes),
+    unscheduledMinutes: getNumber(plan.unscheduledMinutes),
     unscheduledTaskIds: getStringArray(plan.unscheduledTaskIds),
     blocks,
     warnings: getStringArray(plan.warnings),
@@ -139,9 +160,7 @@ export async function refreshTasksWithAi(): Promise<AiRefreshResult> {
   const { accessToken } = await GoogleSignin.getTokens();
   if (!accessToken) throw new Error("No se encontro una sesion de Google valida.");
 
-  if (__DEV__) {
-    console.log("Access token para Swagger:", accessToken);
-  }
+  if (__DEV__) console.log("Token temporal para Swagger:", accessToken);
 
   const response = await fetch(`${getApiUrl()}/v1/agent/tasks/refresh?force=false`, {
     method: "POST",

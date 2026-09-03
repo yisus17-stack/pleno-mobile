@@ -1,24 +1,53 @@
 import { useState } from "react";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { Image, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useMutation } from "convex/react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import Svg, { Path } from "react-native-svg";
 
 import PlenoLogoBlanco from "@/assets/brand/logo_pleno_blanco.svg";
 import { useFeedback } from "@/components/feedback";
 import { Screen } from "@/components/layout";
-import { AppText, Button } from "@/components/ui";
-import { AuthTextInput } from "@/features/auth/components/AuthTextInput";
+import { AppText } from "@/components/ui";
 import { GoogleSignInButton } from "@/features/auth/components/GoogleSignInButton";
-import { colors, spacing } from "@/theme";
+import { colors, radius, spacing } from "@/theme";
 import { api } from "@convex/_generated/api";
 import { configureGoogleSignIn } from "@/features/auth/google";
 import { useAuth } from "@/features/auth/AuthProvider";
 
 configureGoogleSignIn();
 
+function LockIcon() {
+  return (
+    <Svg fill="none" height={22} viewBox="0 0 24 24" width={22}>
+      <Path d="M7 10V8a5 5 0 0 1 10 0v2M6.5 10h11A1.5 1.5 0 0 1 19 11.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-8A1.5 1.5 0 0 1 6.5 10Z" stroke={colors.primary} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} />
+      <Path d="M12 14v3" stroke={colors.primary} strokeLinecap="round" strokeWidth={1.8} />
+    </Svg>
+  );
+}
+
+function PlannerBoardDecoration() {
+  return (
+    <Svg fill="none" height={88} viewBox="0 0 96 88" width={96}>
+      <Path d="M16 19h64a7 7 0 0 1 7 7v43a7 7 0 0 1-7 7H16a7 7 0 0 1-7-7V26a7 7 0 0 1 7-7Z" stroke="#A9D9FF" strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} />
+      <Path d="M9 34h78M29 12v14M67 12v14" stroke="#A9D9FF" strokeLinecap="round" strokeWidth={3} />
+      <Path d="M27 49h1M48 49h1M69 49h1M27 63h1M48 63h1" stroke="#A9D9FF" strokeLinecap="round" strokeWidth={6} />
+    </Svg>
+  );
+}
+
+function PaperPlaneDecoration() {
+  return (
+    <Svg fill="none" height={105} viewBox="0 0 175 105" width={175}>
+      <Path d="M58 24h27c25 0 49 25 80 52" stroke="#A9D9FF" strokeDasharray="5 7" strokeLinecap="round" strokeWidth={2.5} />
+      <Path d="m4 24 58-19-18 19 18 19L4 24Z" stroke="#A9D9FF" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} />
+      <Path d="M4 24h40" stroke="#A9D9FF" strokeLinecap="round" strokeWidth={2.5} />
+    </Svg>
+  );
+}
+
 export function LoginScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const { height } = useWindowDimensions();
+  const isCompactScreen = height < 700;
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const storeUser = useMutation(api.users.storeUser);
   const { setAuthenticatedUser } = useAuth();
@@ -51,131 +80,129 @@ export function LoginScreen() {
     }
   };
 
-  const handleEmailLogin = () => {
-    showToast({ type: "warning", title: "Próximamente", message: "El acceso con correo estará disponible pronto." });
-  };
+  const heroHeight = isCompactScreen
+    ? Math.min(390, Math.max(280, height - 280))
+    : Math.min(478, Math.max(410, Math.round(height * 0.6)));
 
   return (
     <Screen padded={false}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.container}>
-          <View style={styles.hero}>
-            <PlenoLogoBlanco width={250} height={76} style={styles.heroLogo} />
+      <View style={styles.container}>
+          <View style={[styles.hero, { height: heroHeight }]}>
+            <View style={styles.heroDecorationLeft} />
+            <View style={styles.heroDecorationRight} />
+            <View style={styles.heroPlane}><PaperPlaneDecoration /></View>
+            <View style={styles.heroBoard}><PlannerBoardDecoration /></View>
+            <PlenoLogoBlanco width={isCompactScreen ? 220 : 250} height={isCompactScreen ? 78 : 88} style={styles.heroLogo} />
+            <View style={[styles.heroCopy, isCompactScreen && styles.heroCopyCompact]}>
+              <AppText color={colors.white} style={styles.heroSlogan}>Tu día, tu plan,</AppText>
+              <AppText color={colors.accent} style={styles.heroSlogan}>tu mejor versión.</AppText>
+              <Image source={require("@/assets/images/line_image.png")} style={styles.heroUnderline} resizeMode="contain" />
+            </View>
             <Image
               source={require("@/assets/images/login_image.png")}
-              style={styles.illustration}
+              style={[styles.illustration, isCompactScreen && styles.illustrationCompact, { bottom: heroHeight - (isCompactScreen ? 470 : 531) }]}
               resizeMode="contain"
             />
           </View>
 
-          <View style={styles.content}>
-            <View style={styles.brand}>
-              <AppText variant="h1" style={styles.title}>
-                Bienvenido a Pleno
-              </AppText>
-              <AppText color={colors.textSecondary} style={styles.subtitle}>
-                Inicia sesion para continuar
-              </AppText>
-            </View>
-
-            <View style={styles.footer}>
-              <View style={styles.fields}>
-                <AuthTextInput
-                  label="Correo electronico"
-                  placeholder="tu@correo.com"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <AuthTextInput
-                  label="Contrasena"
-                  placeholder="Escribe tu contrasena"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
+          <View style={[styles.content, isCompactScreen && styles.contentCompact]}>
+            <View style={styles.contentGroup}>
+              <View style={styles.brand}>
+                <AppText variant="h1" style={styles.title}>
+                  Bienvenido a Pleno
+                </AppText>
+                
+                <AppText color={colors.textSecondary} style={[styles.subtitle, isCompactScreen && styles.subtitleCompact]}>
+                  Inicia sesión con tu cuenta de Google para continuar
+                </AppText>
               </View>
-              <Button title="Iniciar sesion" onPress={handleEmailLogin} />
-              <AppText color={colors.textMuted} style={styles.divider}>
-                o continua con
-              </AppText>
-              <GoogleSignInButton
-                onPress={handleGoogleLogin}
-                loading={isGoogleLoading}
-              />
-              <AppText variant="caption" color={colors.textMuted} style={styles.legal}>
-                {"Al continuar, aceptas los T\u00e9rminos de servicio y la Pol\u00edtica de privacidad."}
-              </AppText>
+
+              <View style={[styles.footer, isCompactScreen && styles.footerCompact]}>
+                <GoogleSignInButton
+                  onPress={handleGoogleLogin}
+                  loading={isGoogleLoading}
+                />
+                <View style={styles.securityNote}>
+                  <LockIcon />
+                  <AppText color={colors.textSecondary} style={styles.securityText}>Seguro, rápido y sin contraseñas</AppText>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
-      </ScrollView>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    minHeight: "100%",
+    flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
   hero: {
-    height: 310,
-    overflow: "visible",
-    backgroundColor: "#35A0F8",
+    overflow: "hidden",
+    backgroundColor: colors.primary,
     alignItems: "center",
   },
   illustration: {
     position: "absolute",
-    bottom: -102,
-    width: "125%",
-    height: 390,
-    zIndex: 3,
+    width: 300,
+    height: 400,
+    zIndex: 2,
   },
+  illustrationCompact: { height: 360, width: 270 },
   heroLogo: {
     position: "absolute",
-    top: spacing.xxl,
+    top: 30,
     zIndex: 4,
   },
+  heroCopy: { alignItems: "center", marginTop: 110, zIndex: 4 },
+  heroCopyCompact: { marginTop: 92 },
+  heroSlogan: { fontSize: 22, fontWeight: "800", lineHeight: 29, textAlign: "center" },
+  heroUnderline: { height: 40, marginTop: -5, width: 90, zIndex: 4 },
+  heroDecorationLeft: { borderColor: "#A9D9FF", borderRadius: radius.full, borderStyle: "dashed", borderWidth: 2.5, height: 159, left: -130, opacity: 0.6, position: "absolute", top: 0, transform: [{ rotate: "-26deg" }], width: 200 },
+  heroDecorationRight: { borderColor: "#A9D9FF", borderRadius: radius.full, borderStyle: "dashed", borderWidth: 2.5, height: 96, opacity: 0.6, position: "absolute", right: -39, top: 132, transform: [{ rotate: "28deg" }], width: 106 },
+  heroPlane: { left: -50, opacity: 0.6, position: "absolute", top: 260, transform: [{ rotate: "-28deg" }, { scaleX: -1 }], zIndex: 1 },
+  heroBoard: { opacity: 0.6, position: "absolute", right: 12, top: 292, transform: [{ rotate: "9deg" }], zIndex: 1 },
   content: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    marginTop: -25,
     paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.xxxl,
-    paddingBottom: spacing.lg,
+    paddingTop: 52,
+    paddingBottom: 14,
+    flex: 1,
+    justifyContent: "center",
+    zIndex: 5,
   },
+  contentCompact: { paddingBottom: spacing.sm, paddingTop: spacing.xl },
   brand: {
     alignItems: "center",
   },
+  contentGroup: { transform: [{ translateY: -20 }] },
   title: {
+    fontSize: 28,
     fontWeight: "700",
+
   },
   subtitle: {
-    marginTop: spacing.xs,
+    lineHeight: 23,
+    marginTop: spacing.lg,
     marginBottom: spacing.xl,
+    maxWidth: 290,
+    textAlign: "center",
   },
+  subtitleCompact: { marginBottom: spacing.lg, marginTop: spacing.sm },
   footer: {
     width: "100%",
     maxWidth: 420,
     alignSelf: "center",
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sm,
     gap: spacing.md,
   },
-  fields: {
-    gap: spacing.md,
-  },
-  divider: {
-    textAlign: "center",
-  },
-  legal: {
-    textAlign: "center",
-    lineHeight: 17,
-  },
+  footerCompact: { gap: spacing.sm },
+ 
+  securityNote: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "center", marginTop: spacing.xs },
+  securityText: { fontSize: 13 },
 });

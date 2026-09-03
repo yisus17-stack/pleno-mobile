@@ -3,7 +3,7 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Dimensions, Easing, Image, Keyboard, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Image, Keyboard, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, TextInput, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { api } from "@convex/_generated/api";
@@ -14,14 +14,13 @@ import { AppText } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useFeedback } from "@/components/feedback";
 import { syncClassroomTasks } from "@/features/classroom/api";
+import { getClassroomErrorMessage } from "@/features/classroom/errors";
 import { cancelTaskReminder, syncTaskReminder } from "@/features/notifications/taskReminders";
 import { ManualTaskSheet } from "@/features/tasks/components/ManualTaskSheet";
 import { TaskSection, TaskSectionData } from "@/features/tasks/components/TaskSection";
 import { styles } from "@/features/tasks/styles";
 import { buildManualDueDate, isTaskOverdue } from "@/features/tasks/utils";
 import { colors, spacing } from "@/theme";
-
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 const usersApi = (api as unknown as {
   users: {
@@ -34,6 +33,7 @@ type ClassroomConnection = {
 };
 
 export default function TasksScreen() {
+  const { height: screenHeight } = useWindowDimensions();
   const { user } = useAuth();
   const { showDialog, showToast } = useFeedback();
   const { taskId } = useLocalSearchParams<{ taskId?: string }>();
@@ -197,7 +197,7 @@ export default function TasksScreen() {
             : "Tus tareas se sincronizaron correctamente.",
       });
     } catch (error) {
-      showToast({ type: "error", title: "No se pudo actualizar Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
+      showToast({ type: "error", title: "No se pudo actualizar Classroom", message: getClassroomErrorMessage(error, "sync") });
     } finally {
       setIsSyncingClassroom(false);
     }
@@ -224,7 +224,7 @@ export default function TasksScreen() {
 
   const presentCreateSheet = () => {
     isClosingCreateSheetRef.current = false;
-    createSheetTranslateY.setValue(SCREEN_HEIGHT);
+    createSheetTranslateY.setValue(screenHeight);
     createSheetBackdropOpacity.setValue(0);
     setIsCreateModalVisible(true);
 
@@ -254,7 +254,7 @@ export default function TasksScreen() {
 
   const presentTaskMenu = (id: string) => {
     isClosingTaskMenuRef.current = false;
-    taskMenuTranslateY.setValue(SCREEN_HEIGHT);
+    taskMenuTranslateY.setValue(screenHeight);
     taskMenuBackdropOpacity.setValue(0);
     setManualTaskMenuId(id);
     setIsTaskMenuVisible(true);
@@ -287,7 +287,7 @@ export default function TasksScreen() {
       Animated.timing(taskMenuTranslateY, {
         duration: 280,
         easing: Easing.out(Easing.cubic),
-        toValue: SCREEN_HEIGHT,
+        toValue: screenHeight,
         useNativeDriver: true,
       }),
       Animated.timing(taskMenuBackdropOpacity, {
@@ -336,7 +336,7 @@ export default function TasksScreen() {
       Animated.timing(createSheetTranslateY, {
         duration: 280,
         easing: Easing.out(Easing.cubic),
-        toValue: SCREEN_HEIGHT,
+        toValue: screenHeight,
         useNativeDriver: true,
       }),
       Animated.timing(createSheetBackdropOpacity, {
@@ -359,16 +359,11 @@ export default function TasksScreen() {
     if (isCreatingManualTask || isClosingCreateSheetRef.current) return;
 
     isClosingCreateSheetRef.current = true;
-    const taskIdToReopenMenu = editingTaskId;
 
     animateCreateSheetOut(() => {
       setIsCreateModalVisible(false);
       setEditingTaskId(null);
       isClosingCreateSheetRef.current = false;
-
-      if (taskIdToReopenMenu) {
-        requestAnimationFrame(() => presentTaskMenu(taskIdToReopenMenu));
-      }
     });
   };
 

@@ -16,6 +16,7 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { useFeedback } from "@/components/feedback";
 import { classroomScopes, configureGoogleSignIn } from "@/features/auth/google";
 import { syncClassroomTasks } from "@/features/classroom/api";
+import { getClassroomErrorMessage } from "@/features/classroom/errors";
 
 configureGoogleSignIn();
 
@@ -64,6 +65,14 @@ function formatLastSyncedAt(timestamp?: number) {
     : `Última actualización: ${date.toLocaleDateString("es-MX", { day: "numeric", month: "short" })}, ${time}`;
 }
 
+function formatProfileName(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((part) => `${part.charAt(0).toLocaleUpperCase("es-MX")}${part.slice(1).toLocaleLowerCase("es-MX")}`)
+    .join(" ");
+}
+
 export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isLinkingClassroom, setIsLinkingClassroom] = useState(false);
@@ -76,7 +85,7 @@ export default function ProfileScreen() {
   const setClassroomEnabled = useMutation(usersApi.setClassroomEnabled);
   const nativeGoogleUser = GoogleSignin.getCurrentUser()?.user;
   const googleUser = authenticatedUser || nativeGoogleUser;
-  const name = googleUser?.name || classroomUser?.name || googleUser?.email.split("@")[0] || "Usuario";
+  const name = formatProfileName(googleUser?.name || classroomUser?.name || googleUser?.email.split("@")[0] || "Usuario");
   const initial = name.charAt(0).toUpperCase();
   const profilePicture = authenticatedUser?.photo || nativeGoogleUser?.photo || classroomUser?.picture;
   const isClassroomLinked = classroomUser?.classroomEnabled === true;
@@ -96,7 +105,7 @@ export default function ProfileScreen() {
       await setClassroomEnabled({ userId: authenticatedUser.id, enabled: true });
       showToast({ type: "success", title: "Classroom vinculado", message: result.totalSynced === 1 ? "Importamos 1 tarea." : typeof result.totalSynced === "number" ? `Importamos ${result.totalSynced} tareas.` : "Tus tareas se sincronizaron correctamente." });
     } catch (error) {
-      showToast({ type: "error", title: "No se pudo vincular Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
+      showToast({ type: "error", title: "No se pudo vincular Classroom", message: getClassroomErrorMessage(error, "link") });
     } finally {
       setIsLinkingClassroom(false);
     }
@@ -119,7 +128,7 @@ export default function ProfileScreen() {
               await setClassroomEnabled({ userId: authenticatedUser.id, enabled: false });
               showToast({ type: "success", title: "Classroom desconectado", message: "Ya no sincronizaremos tareas automáticamente." });
             } catch (error) {
-              showToast({ type: "error", title: "No se pudo desconectar Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
+              showToast({ type: "error", title: "No se pudo desconectar Classroom", message: getClassroomErrorMessage(error, "disconnect") });
             } finally {
               setIsLinkingClassroom(false);
             }
@@ -189,11 +198,11 @@ export default function ProfileScreen() {
           </View>
 
           <Pressable accessibilityRole="button" onPress={() => router.push("/preferences?mode=edit")} style={({ pressed }) => [styles.plannerProfileRow, pressed && styles.pressed]}>
-            <View>
+            <View style={styles.plannerProfileCopy}>
               <AppText style={styles.plannerProfileTitle}>Tu planificación</AppText>
               <AppText color={colors.textSecondary} variant="bodySmall" style={styles.plannerProfileDescription}>Disponibilidad, energía y ritmo de trabajo</AppText>
+              <AppText color={colors.primary} style={styles.plannerProfileAction}>Editar</AppText>
             </View>
-            <AppText color={colors.primary} style={styles.plannerProfileAction}>Editar</AppText>
           </Pressable>
 
           <Pressable accessibilityRole="button" disabled={isSigningOut} onPress={confirmSignOut} style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed, isSigningOut && styles.disabled]}>
@@ -220,28 +229,29 @@ const styles = StyleSheet.create({
   initial: { fontSize: 38, fontWeight: "600" },
   profileName: { fontSize: 31, fontWeight: "700", letterSpacing: -0.65, lineHeight: 38, marginTop: spacing.lg, textAlign: "center" },
   email: { fontSize: 17, lineHeight: 24, marginTop: 3, textAlign: "center" },
-  googleStatus: { alignItems: "center", backgroundColor: colors.white, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderColor: colors.border, borderWidth: 1 },
+  googleStatus: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.full, borderWidth: 1, flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, maxWidth: "100%", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   googleIcon: { height: 18, width: 18 },
   statusLabel: { fontSize: 15, fontWeight: "500" },
   sectionTitle: { alignSelf: "flex-start", fontSize: 13, fontWeight: "800", letterSpacing: 1.2, marginTop: spacing.xl },
   classroomCard: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.xl, borderWidth: 1, marginTop: spacing.md, padding: spacing.xl, width: "100%" },
   classroomTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   classroomIcon: { height: 36, width: 41 },
-  settingDetails: { width: "100%" },
+  settingDetails: { minWidth: 0, width: "100%" },
   classroomTitle: { fontSize: 21, fontWeight: "700", lineHeight: 27, marginTop: spacing.lg },
   settingDescription: { fontSize: 16, lineHeight: 24, marginTop: 5, textAlign: "justify" },
   lastSyncText: { lineHeight: 18, marginTop: spacing.sm },
-  connectionStatus: { alignItems: "center", flexDirection: "row" },
+  connectionStatus: { alignItems: "center", flexDirection: "row", flexShrink: 1 },
   connectionDot: { backgroundColor: colors.primary, borderRadius: radius.full, height: 10, marginRight: spacing.sm, width: 10 },
   connectionDotLinked: { backgroundColor: colors.success },
   connectionText: { fontSize: 16, fontWeight: "700" },
-  connectClassroomButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, height: 56, justifyContent: "center", marginTop: spacing.xl },
+  connectClassroomButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.full, flexDirection: "row", gap: spacing.sm, height: 56, justifyContent: "center", marginTop: spacing.xl, paddingHorizontal: spacing.md },
   disconnectClassroomButton: { backgroundColor: colors.danger },
   connectClassroomButtonText: { fontSize: 18, fontWeight: "700" },
-  plannerProfileRow: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xl, minHeight: 76, paddingHorizontal: spacing.lg, width: "100%" },
+  plannerProfileRow: { backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, marginTop: spacing.xl, minHeight: 76, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, width: "100%" },
+  plannerProfileCopy: { minWidth: 0 },
   plannerProfileTitle: { fontSize: 17, fontWeight: "700" },
   plannerProfileDescription: { marginTop: 3 },
-  plannerProfileAction: { fontSize: 15, fontWeight: "700" },
+  plannerProfileAction: { fontSize: 15, fontWeight: "700", marginTop: spacing.sm },
   signOutRow: { alignItems: "center", backgroundColor: colors.white, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", marginTop: spacing.xl, minHeight: 78, paddingHorizontal: spacing.lg, width: "100%" },
   signOutLabel: { fontSize: 18, fontWeight: "700", marginLeft: spacing.md },
   signOutArrow: { marginLeft: "auto" },
