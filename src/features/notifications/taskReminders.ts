@@ -52,14 +52,6 @@ export async function cancelTaskReminder(taskId: string) {
 
 export async function syncTaskReminder({ dueDate, taskId, title }: { dueDate?: number; taskId: string; title: string }) {
   try {
-    if (__DEV__) {
-      console.log("Evaluando recordatorio local:", {
-        dueDate: dueDate ? new Date(dueDate).toLocaleString() : "sin fecha",
-        isFuture: Boolean(dueDate && dueDate > Date.now()),
-        taskId,
-      });
-    }
-
     await cancelTaskReminder(taskId);
     if (!dueDate || dueDate <= Date.now()) return;
     if (!(await requestNotificationPermission())) return;
@@ -80,14 +72,6 @@ export async function syncTaskReminder({ dueDate, taskId, title }: { dueDate?: n
     const reminderIds = await getReminderIds();
     reminderIds[taskId] = notificationId;
     await saveReminderIds(reminderIds);
-
-    if (__DEV__) {
-      console.log("Recordatorio local programado:", {
-        dueDate: new Date(dueDate).toLocaleString(),
-        notificationId,
-        taskId,
-      });
-    }
   } catch (error) {
     console.warn("No se pudo programar el recordatorio local:", error);
   }

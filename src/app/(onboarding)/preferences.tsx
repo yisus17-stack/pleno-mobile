@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from "expo-router";
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import Svg, { Path } from "react-native-svg";
 
 import { Screen } from "@/components/layout";
+import { useFeedback } from "@/components/feedback";
 import { AppText, Button } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { profilesApi, UserProfile } from "@/features/profiles/api";
@@ -103,6 +104,7 @@ function PreferenceSelect({ label, options, value, onChange, multiple = false, r
 export default function PreferencesScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const { user } = useAuth();
+  const { showToast } = useFeedback();
   const profile = useQuery(profilesApi.getProfile, user ? { userId: user.id } : "skip") as UserProfile | null | undefined;
   const saveProfile = useMutation(profilesApi.saveProfile);
   const isEditing = mode === "edit";
@@ -130,6 +132,7 @@ export default function PreferencesScreen() {
   const [goals, setGoals] = useState("");
   const [activities, setActivities] = useState("");
   const [distractions, setDistractions] = useState("");
+  const showValidation = (title: string, message: string) => showToast({ type: "warning", title, message });
 
   useEffect(() => {
     if (!profile) return;
@@ -151,21 +154,21 @@ export default function PreferencesScreen() {
   const calculatedEndTime = calculateEndTime(startTime, availableHours ?? 0);
 
   const canLeaveTimeStep = () => {
-    if (!role.trim()) { Alert.alert("Elige tu rol", "Selecciona un rol para continuar."); return false; }
-    if (!age.trim() || toNumber(age, 0) < 10 || toNumber(age, 0) > 99) { Alert.alert("Revisa tu edad", "Escribe una edad entre 10 y 99 años."); return false; }
-    if (!occupation.trim()) { Alert.alert("Elige tu ocupación", "Selecciona tu ocupación o carrera para continuar."); return false; }
-    if (availableHours === null || studyHours === null || workHours === null) { Alert.alert("Completa tus horas", "Elige tus horas libres, de estudio y de trabajo para continuar."); return false; }
-    if (studyHours > availableHours) { Alert.alert("Revisa tus horas", "El tiempo de estudio no puede superar tus horas libres."); return false; }
-    if (workHours + availableHours > DAILY_AWAKE_HOURS) { Alert.alert("Revisa tus horas", "Reservamos al menos 8 horas al día para descansar."); return false; }
-    if (!selectedDays.length) { Alert.alert("Elige tus días", "Selecciona al menos un día en el que tengas tiempo disponible."); return false; }
-    if (!/^\d{2}:\d{2}$/.test(startTime)) { Alert.alert("Revisa el horario", "Elige una hora de inicio válida."); return false; }
-    if (timeToMinutes(startTime) + availableHours * 60 > 24 * 60) { Alert.alert("Revisa el horario", "Elige una hora de inicio más temprana para completar tu bloque disponible."); return false; }
+    if (!role.trim()) { showValidation("Elige tu rol", "Selecciona un rol para continuar."); return false; }
+    if (!age.trim() || toNumber(age, 0) < 10 || toNumber(age, 0) > 99) { showValidation("Revisa tu edad", "Escribe una edad entre 10 y 99 años."); return false; }
+    if (!occupation.trim()) { showValidation("Elige tu ocupación", "Selecciona tu ocupación o carrera para continuar."); return false; }
+    if (availableHours === null || studyHours === null || workHours === null) { showValidation("Completa tus horas", "Elige tus horas libres, de estudio y de trabajo para continuar."); return false; }
+    if (studyHours > availableHours) { showValidation("Revisa tus horas", "El tiempo de estudio no puede superar tus horas libres."); return false; }
+    if (workHours + availableHours > DAILY_AWAKE_HOURS) { showValidation("Revisa tus horas", "Reservamos al menos 8 horas al día para descansar."); return false; }
+    if (!selectedDays.length) { showValidation("Elige tus días", "Selecciona al menos un día en el que tengas tiempo disponible."); return false; }
+    if (!/^\d{2}:\d{2}$/.test(startTime)) { showValidation("Revisa el horario", "Elige una hora de inicio válida."); return false; }
+    if (timeToMinutes(startTime) + availableHours * 60 > 24 * 60) { showValidation("Revisa el horario", "Elige una hora de inicio más temprana para completar tu bloque disponible."); return false; }
     return true;
   };
 
   const canLeaveEnergyStep = () => {
     if (morningEnergy === null || afternoonEnergy === null || nightEnergy === null || tolerance === null) {
-      Alert.alert("Completa tu energía", "Elige una opción en cada pregunta para continuar.");
+      showValidation("Completa tu energía", "Elige una opción en cada pregunta para continuar.");
       return false;
     }
     return true;
@@ -173,7 +176,7 @@ export default function PreferencesScreen() {
 
   const canSavePreferences = () => {
     if (!workMethod || !learningStyle || !goals || !activities || !distractions) {
-      Alert.alert("Completa tus preferencias", "Elige al menos una opción en cada sección para guardar tu perfil.");
+      showValidation("Completa tus preferencias", "Elige al menos una opción en cada sección para guardar tu perfil.");
       return false;
     }
     return true;
@@ -197,7 +200,7 @@ export default function PreferencesScreen() {
       });
       if (isEditing) router.back(); else router.replace("/classroom");
     } catch (error) {
-      Alert.alert("No se pudo guardar tu perfil", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+      showToast({ type: "error", title: "No se pudo guardar tu perfil", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
     } finally { setIsSaving(false); }
   };
 

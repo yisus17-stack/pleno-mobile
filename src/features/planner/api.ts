@@ -139,6 +139,10 @@ export async function refreshTasksWithAi(): Promise<AiRefreshResult> {
   const { accessToken } = await GoogleSignin.getTokens();
   if (!accessToken) throw new Error("No se encontro una sesion de Google valida.");
 
+  if (__DEV__) {
+    console.log("Access token para Swagger:", accessToken);
+  }
+
   const response = await fetch(`${getApiUrl()}/v1/agent/tasks/refresh?force=false`, {
     method: "POST",
     headers: {

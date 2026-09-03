@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useMutation, useQuery } from "convex/react";
@@ -13,6 +13,7 @@ import { Screen } from "@/components/layout";
 import { AppText } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useFeedback } from "@/components/feedback";
 import { classroomScopes, configureGoogleSignIn } from "@/features/auth/google";
 import { syncClassroomTasks } from "@/features/classroom/api";
 
@@ -22,6 +23,8 @@ type ClassroomConnection = {
   classroomConnectedAt?: number;
   classroomEnabled?: boolean;
   lastSyncedAt?: number;
+  name?: string;
+  picture?: string;
 };
 
 // Las funciones ya están desplegadas en Convex; el código generado local aún no las tipa.
@@ -48,24 +51,40 @@ function ArrowIcon() {
   return <Svg width={22} height={22} viewBox="0 0 24 24" fill="none"><Path d="m9 6 6 6-6 6" stroke={colors.danger} strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
 }
 
+function formatLastSyncedAt(timestamp?: number) {
+  if (!timestamp) return "Aún no has actualizado tus tareas.";
+
+  const date = new Date(timestamp);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  const time = date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+
+  return isToday
+    ? `Última actualización: hoy a las ${time}`
+    : `Última actualización: ${date.toLocaleDateString("es-MX", { day: "numeric", month: "short" })}, ${time}`;
+}
+
 export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isLinkingClassroom, setIsLinkingClassroom] = useState(false);
   const { clearAuthenticatedUser, user: authenticatedUser } = useAuth();
+  const { showDialog, showToast } = useFeedback();
   const classroomUser = useQuery(
     usersApi.getUserByGoogleId,
     authenticatedUser ? { googleId: authenticatedUser.id } : "skip"
   ) as ClassroomConnection | null | undefined;
   const setClassroomEnabled = useMutation(usersApi.setClassroomEnabled);
-  const googleUser = authenticatedUser || GoogleSignin.getCurrentUser()?.user;
-  const name = googleUser?.name || googleUser?.email.split("@")[0] || "Usuario";
+  const nativeGoogleUser = GoogleSignin.getCurrentUser()?.user;
+  const googleUser = authenticatedUser || nativeGoogleUser;
+  const name = googleUser?.name || classroomUser?.name || googleUser?.email.split("@")[0] || "Usuario";
   const initial = name.charAt(0).toUpperCase();
+  const profilePicture = authenticatedUser?.photo || nativeGoogleUser?.photo || classroomUser?.picture;
   const isClassroomLinked = classroomUser?.classroomEnabled === true;
   const isClassroomStatusLoading = Boolean(authenticatedUser) && classroomUser === undefined;
 
   const linkClassroom = async () => {
     if (!authenticatedUser) {
-      Alert.alert("Sesión no disponible", "Inicia sesión de nuevo para vincular Classroom.");
+      showToast({ type: "error", title: "Sesión no disponible", message: "Inicia sesión de nuevo para vincular Classroom." });
       return;
     }
     setIsLinkingClassroom(true);
@@ -75,39 +94,40 @@ export default function ProfileScreen() {
       const { accessToken } = await GoogleSignin.getTokens();
       const result = await syncClassroomTasks(accessToken);
       await setClassroomEnabled({ userId: authenticatedUser.id, enabled: true });
-      Alert.alert("Classroom vinculado", result.totalSynced === 1 ? "Importamos 1 tarea." : typeof result.totalSynced === "number" ? `Importamos ${result.totalSynced} tareas.` : "Tus tareas se sincronizaron correctamente.");
+      showToast({ type: "success", title: "Classroom vinculado", message: result.totalSynced === 1 ? "Importamos 1 tarea." : typeof result.totalSynced === "number" ? `Importamos ${result.totalSynced} tareas.` : "Tus tareas se sincronizaron correctamente." });
     } catch (error) {
-      Alert.alert("No se pudo vincular Classroom", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+      showToast({ type: "error", title: "No se pudo vincular Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
     } finally {
       setIsLinkingClassroom(false);
     }
   };
 
-  const disconnectClassroom = () => Alert.alert(
-    "¿Desconectar Classroom?",
-    "Dejarás de sincronizar tareas de Google Classroom automáticamente.",
-    [
-      { text: "Cancelar", style: "cancel" },
+  const disconnectClassroom = () => showDialog({
+    type: "warning",
+    title: "¿Desconectar Classroom?",
+    message: "Dejarás de sincronizar tareas de Google Classroom automáticamente.",
+    actions: [
+      { label: "Cancelar" },
       {
-        text: "Desconectar",
-        style: "destructive",
+        label: "Desconectar",
+        variant: "destructive",
         onPress: () => {
           void (async () => {
             if (!authenticatedUser) return;
-
             setIsLinkingClassroom(true);
             try {
               await setClassroomEnabled({ userId: authenticatedUser.id, enabled: false });
+              showToast({ type: "success", title: "Classroom desconectado", message: "Ya no sincronizaremos tareas automáticamente." });
             } catch (error) {
-              Alert.alert("No se pudo desconectar Classroom", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+              showToast({ type: "error", title: "No se pudo desconectar Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
             } finally {
               setIsLinkingClassroom(false);
             }
           })();
         },
       },
-    ]
-  );
+    ],
+  });
 
   const signOut = async () => {
     setIsSigningOut(true);
@@ -116,15 +136,17 @@ export default function ProfileScreen() {
       clearAuthenticatedUser();
       router.replace("/login");
     } catch (error) {
-      Alert.alert("No se pudo cerrar sesión", error instanceof Error ? error.message : "Inténtalo de nuevo.");
+      showToast({ type: "error", title: "No se pudo cerrar sesión", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
       setIsSigningOut(false);
     }
   };
 
-  const confirmSignOut = () => Alert.alert("Cerrar sesión", "Tendrás que iniciar sesión de nuevo para entrar a PLENO.", [
-    { text: "Cancelar", style: "cancel" },
-    { text: "Cerrar sesión", style: "destructive", onPress: signOut },
-  ]);
+  const confirmSignOut = () => showDialog({
+    type: "warning",
+    title: "¿Cerrar sesión?",
+    message: "Tendrás que iniciar sesión de nuevo para entrar a PLENO.",
+    actions: [{ label: "Cancelar" }, { label: "Cerrar sesión", variant: "destructive", onPress: signOut }],
+  });
 
   return (
     <Screen padded={false} safeAreaColor={colors.accent}>
@@ -140,7 +162,7 @@ export default function ProfileScreen() {
 
         <View style={styles.profileBody}>
           <View style={styles.avatarArea}>
-            {googleUser?.photo ? <Image source={{ uri: googleUser.photo }} style={styles.avatar} /> : <View style={styles.avatarFallback}><AppText color={colors.text} style={styles.initial}>{initial}</AppText></View>}
+            {profilePicture ? <Image source={{ uri: profilePicture }} style={styles.avatar} /> : <View style={styles.avatarFallback}><AppText color={colors.white} style={styles.initial}>{initial}</AppText></View>}
           </View>
           <AppText numberOfLines={1} style={styles.profileName}>{name}</AppText>
           <AppText color={colors.text} numberOfLines={1} style={styles.email}>{googleUser?.email || "Cuenta de Google"}</AppText>
@@ -159,6 +181,7 @@ export default function ProfileScreen() {
             <View style={styles.settingDetails}>
               <AppText style={styles.classroomTitle}>Google Classroom</AppText>
               <AppText color={colors.textSecondary} style={styles.settingDescription}>Vincula tu cuenta para sincronizar tus cursos, tareas y próximos pendientes automáticamente.</AppText>
+              {isClassroomLinked && <AppText color={colors.textSecondary} variant="caption" style={styles.lastSyncText}>{formatLastSyncedAt(classroomUser?.lastSyncedAt)}</AppText>}
             </View>
             <Pressable accessibilityLabel={isClassroomLinked ? "Desconectar Google Classroom" : "Conectar Google Classroom"} accessibilityRole="button" disabled={isLinkingClassroom} onPress={() => isClassroomLinked ? disconnectClassroom() : void linkClassroom()} style={({ pressed }) => [styles.connectClassroomButton, isClassroomLinked && styles.disconnectClassroomButton, pressed && styles.pressed, isLinkingClassroom && styles.disabled]}>
               {isLinkingClassroom ? <ActivityIndicator color={colors.white} size="small" /> : <><LinkIcon /><AppText color={colors.white} style={styles.connectClassroomButtonText}>{isClassroomLinked ? "Desconectar Classroom" : "Conectar Classroom"}</AppText></>}
@@ -193,7 +216,7 @@ const styles = StyleSheet.create({
   profileBody: { alignItems: "center", marginTop: -170, paddingHorizontal: spacing.xl, zIndex: 3 },
   avatarArea: { height: 108, width: 108 },
   avatar: { backgroundColor: colors.white, borderRadius: 54, height: 108, width: 108 },
-  avatarFallback: { alignItems: "center", backgroundColor: colors.white, borderRadius: 54, height: 108, justifyContent: "center", width: 108 },
+  avatarFallback: { alignItems: "center", backgroundColor: "#2F661B", borderColor: colors.primary, borderRadius: 54, borderWidth: 4, height: 108, justifyContent: "center", width: 108 },
   initial: { fontSize: 38, fontWeight: "600" },
   profileName: { fontSize: 31, fontWeight: "700", letterSpacing: -0.65, lineHeight: 38, marginTop: spacing.lg, textAlign: "center" },
   email: { fontSize: 17, lineHeight: 24, marginTop: 3, textAlign: "center" },
@@ -207,6 +230,7 @@ const styles = StyleSheet.create({
   settingDetails: { width: "100%" },
   classroomTitle: { fontSize: 21, fontWeight: "700", lineHeight: 27, marginTop: spacing.lg },
   settingDescription: { fontSize: 16, lineHeight: 24, marginTop: 5, textAlign: "justify" },
+  lastSyncText: { lineHeight: 18, marginTop: spacing.sm },
   connectionStatus: { alignItems: "center", flexDirection: "row" },
   connectionDot: { backgroundColor: colors.primary, borderRadius: radius.full, height: 10, marginRight: spacing.sm, width: 10 },
   connectionDotLinked: { backgroundColor: colors.success },

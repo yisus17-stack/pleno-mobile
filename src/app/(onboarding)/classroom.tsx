@@ -1,9 +1,10 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 import { Screen } from "@/components/layout";
+import { useFeedback } from "@/components/feedback";
 import { AppText, Button } from "@/components/ui";
 import { colors, spacing } from "@/theme";
 import { useAuth } from "@/features/auth/AuthProvider";
@@ -13,6 +14,7 @@ import { syncClassroomTasks } from "@/features/classroom/api";
 export default function ClassroomScreen() {
   const [isLinking, setIsLinking] = useState(false);
   const { user } = useAuth();
+  const { showToast } = useFeedback();
 
   const continueToApp = async () => {
     router.replace("/(app)/(tabs)");
@@ -20,7 +22,7 @@ export default function ClassroomScreen() {
 
   const linkClassroom = async () => {
     if (!user) {
-      Alert.alert("Sesión no disponible", "Inicia sesión de nuevo para vincular Classroom.");
+      showToast({ type: "error", title: "Sesión no disponible", message: "Inicia sesión de nuevo para vincular Classroom." });
       return;
     }
 
@@ -33,20 +35,18 @@ export default function ClassroomScreen() {
       const { accessToken } = await GoogleSignin.getTokens();
       const result = await syncClassroomTasks(accessToken);
 
-      Alert.alert(
-        "Classroom vinculado",
-        result.totalSynced === 1
+      showToast({
+        type: "success",
+        title: "Classroom vinculado",
+        message: result.totalSynced === 1
           ? "Importamos 1 tarea."
           : typeof result.totalSynced === "number"
             ? `Importamos ${result.totalSynced} tareas.`
-            : "Tus tareas se sincronizaron correctamente."
-      );
+            : "Tus tareas se sincronizaron correctamente.",
+      });
       await continueToApp();
     } catch (error) {
-      Alert.alert(
-        "No se pudo vincular Classroom",
-        error instanceof Error ? error.message : "Inténtalo de nuevo."
-      );
+      showToast({ type: "error", title: "No se pudo vincular Classroom", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
     } finally {
       setIsLinking(false);
     }

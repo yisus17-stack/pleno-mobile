@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Alert, Image, ScrollView, StyleSheet, View } from "react-native";
+import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation } from "convex/react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 import PlenoLogoBlanco from "@/assets/brand/logo_pleno_blanco.svg";
+import { useFeedback } from "@/components/feedback";
 import { Screen } from "@/components/layout";
 import { AppText, Button } from "@/components/ui";
 import { AuthTextInput } from "@/features/auth/components/AuthTextInput";
@@ -21,6 +22,7 @@ export function LoginScreen() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const storeUser = useMutation(api.users.storeUser);
   const { setAuthenticatedUser } = useAuth();
+  const { showToast } = useFeedback();
 
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
@@ -43,17 +45,14 @@ export function LoginScreen() {
 
       setAuthenticatedUser(user);
     } catch (error) {
-      Alert.alert(
-        "No se pudo iniciar sesion",
-        error instanceof Error ? error.message : "Intentalo de nuevo."
-      );
+      showToast({ type: "error", title: "No se pudo iniciar sesión", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
     } finally {
       setIsGoogleLoading(false);
     }
   };
 
   const handleEmailLogin = () => {
-    Alert.alert("Proximamente", "El acceso con correo estara disponible pronto.");
+    showToast({ type: "warning", title: "Próximamente", message: "El acceso con correo estará disponible pronto." });
   };
 
   return (
