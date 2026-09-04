@@ -7,6 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
 import { FeedbackProvider } from "@/components/feedback";
+import { NetworkStatusMonitor } from "@/components/feedback/NetworkStatusMonitor";
 import { colors } from "@/theme";
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!, {
@@ -19,6 +20,7 @@ export default function RootLayout() {
       <ConvexProvider client={convex}>
         <AuthProvider>
           <FeedbackProvider>
+            <NetworkStatusMonitor />
             <RootNavigator />
           </FeedbackProvider>
         </AuthProvider>

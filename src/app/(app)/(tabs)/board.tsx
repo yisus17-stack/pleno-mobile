@@ -204,8 +204,8 @@ export default function BoardScreen() {
       const actionableResult = keepActionableAiResult(result, actionableTaskIds);
       setAiResult(actionableResult);
       setIsPlanSummaryExpanded(false);
-      setActiveView("critical");
-      showToast({ type: "success", title: "Tu plan está listo", message: "Revisa tu ruta crítica y el plan semanal." });
+      setActiveView("flow");
+      showToast({ type: "success", title: "Tus tareas ya fueron analizadas", message: "Revisa en Flujo las prioridades y recomendaciones de la IA." });
     } catch (error) {
       const feedback = getAiRefreshErrorFeedback(error);
       showToast({ type: "error", ...feedback });
