@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import * as Network from "expo-network";
-import { BackHandler, Platform } from "react-native";
+import { AppState, BackHandler, Platform } from "react-native";
 
 import { useFeedback } from "@/components/feedback";
 
@@ -12,6 +12,7 @@ export function NetworkStatusMonitor() {
   const { hideDialog, showDialog, showToast } = useFeedback();
   const isOfflineRef = useRef(false);
   const isOfflineDialogVisibleRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
   const initialCheckCompletedRef = useRef(false);
   const updateNetworkStateRef = useRef<(state: Network.NetworkState, isInitial?: boolean) => void>(() => undefined);
 
@@ -33,7 +34,8 @@ export function NetworkStatusMonitor() {
 
     showDialog({
       dismissible: false,
-      presentation: "offline",
+      showIcon: false,
+      type: "warning",
       title: "No estás conectado",
       message: isInitial
         ? "Necesitas conexión a internet para cargar Pleno. Revisa tu red e inténtalo de nuevo."
@@ -72,7 +74,22 @@ export function NetworkStatusMonitor() {
     const subscription = Network.addNetworkStateListener((state) => {
       updateNetworkState(state, !initialCheckCompletedRef.current);
     });
-    return () => subscription.remove();
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      const wasInBackground = appStateRef.current === "background" || appStateRef.current === "inactive";
+      appStateRef.current = nextAppState;
+
+      if (nextAppState !== "active" || !wasInBackground) return;
+
+      isOfflineRef.current = false;
+      void Network.getNetworkStateAsync()
+        .then((state) => updateNetworkState(state))
+        .catch(() => updateNetworkState({ isConnected: false }));
+    });
+
+    return () => {
+      subscription.remove();
+      appStateSubscription.remove();
+    };
   }, [updateNetworkState]);
 
   return null;

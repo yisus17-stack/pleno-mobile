@@ -29,7 +29,7 @@ type DialogAction = {
 type DialogMessage = FeedbackMessage & {
   actions: DialogAction[];
   dismissible?: boolean;
-  presentation?: "default" | "offline";
+  showIcon?: boolean;
   type?: ToastType;
 };
 
@@ -123,22 +123,22 @@ export function FeedbackProvider({ children }: PropsWithChildren) {
           {loading.message && <AppText color={colors.textSecondary} style={styles.loadingMessage}>{loading.message}</AppText>}
         </View>
       </View>}
-      {dialog && <View style={[styles.dialogOverlay, dialog.presentation === "offline" && styles.offlineDialogOverlay]}>
+      {dialog && <View style={styles.dialogOverlay}>
           <Pressable accessibilityLabel="Cerrar alerta" disabled={dialog.dismissible === false} onPress={closeDialog} style={styles.dialogBackdrop} />
-          <View style={[styles.dialogCard, dialog.presentation === "offline" && styles.offlineDialogCard]}>
-            {dialog.presentation !== "offline" && <View style={[styles.dialogIcon, { backgroundColor: toastColors[dialog.type ?? "warning"].accent }]}><ToastIcon size={38} type={dialog.type ?? "warning"} /></View>}
-            <AppText style={[styles.dialogTitle, dialog.presentation === "offline" && styles.offlineDialogTitle]}>{dialog.title}</AppText>
-            {dialog.message && <AppText color={colors.textSecondary} style={[styles.dialogMessage, dialog.presentation === "offline" && styles.offlineDialogMessage]}>{dialog.message}</AppText>}
-            <View style={[styles.dialogActions, dialog.presentation === "offline" && styles.offlineDialogActions]}>
+          <View style={styles.dialogCard}>
+            {dialog.showIcon !== false && <View style={[styles.dialogIcon, { backgroundColor: toastColors[dialog.type ?? "warning"].accent }]}><ToastIcon size={38} type={dialog.type ?? "warning"} /></View>}
+            <AppText style={styles.dialogTitle}>{dialog.title}</AppText>
+            {dialog.message && <AppText color={colors.textSecondary} style={styles.dialogMessage}>{dialog.message}</AppText>}
+            <View style={styles.dialogActions}>
               {dialog.actions.map((action, index) => <Pressable
                 key={`${action.label}-${index}`}
                 onPress={() => {
                   closeDialog();
                   action.onPress?.();
                 }}
-                style={[styles.dialogAction, action.variant === "destructive" ? styles.dialogActionDestructive : action.variant === "primary" ? styles.dialogActionPrimary : styles.dialogActionDefault, dialog.presentation === "offline" && styles.offlineDialogAction]}
+                style={[styles.dialogAction, action.variant === "destructive" ? styles.dialogActionDestructive : action.variant === "primary" ? styles.dialogActionPrimary : styles.dialogActionDefault]}
               >
-                <AppText color={action.variant === "destructive" || action.variant === "primary" ? colors.white : colors.textSecondary} style={[styles.dialogActionText, dialog.presentation === "offline" && styles.offlineDialogActionText]}>{action.label}</AppText>
+                <AppText color={action.variant === "destructive" || action.variant === "primary" ? colors.white : colors.textSecondary} style={styles.dialogActionText}>{action.label}</AppText>
               </Pressable>)}
             </View>
           </View>
@@ -167,7 +167,6 @@ const styles = StyleSheet.create({
   loadingTitle: { fontSize: 17, fontWeight: "700", marginTop: spacing.lg, textAlign: "center" },
   loadingMessage: { lineHeight: 21, marginTop: spacing.sm, textAlign: "center" },
   dialogOverlay: { alignItems: "center", backgroundColor: "transparent", bottom: 0, elevation: 50, justifyContent: "center", left: 0, paddingHorizontal: spacing.xl, position: "absolute", right: 0, top: 0, zIndex: 50 },
-  offlineDialogOverlay: { backgroundColor: "rgba(0, 0, 0, 0.58)" },
   dialogBackdrop: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
   dialogCard: { alignItems: "center", backgroundColor: colors.white, borderRadius: 4, boxShadow: "0px 18px 132px 44px rgba(15, 23, 42, 0.28)", elevation: 26, maxWidth: 360, padding: spacing.xl, shadowColor: colors.text, shadowOffset: { height: 12, width: 0 }, shadowOpacity: 0.28, shadowRadius: 58, width: "100%" },
   dialogIcon: { alignItems: "center", borderRadius: radius.full, height: 68, justifyContent: "center", width: 68 },
@@ -179,10 +178,4 @@ const styles = StyleSheet.create({
   dialogActionDestructive: { backgroundColor: colors.danger },
   dialogActionPrimary: { backgroundColor: colors.primary },
   dialogActionText: { fontSize: 14, fontWeight: "700", textAlign: "center", width: "100%" },
-  offlineDialogCard: { alignItems: "stretch", borderRadius: 18, maxWidth: 390, paddingHorizontal: 24, paddingVertical: 30 },
-  offlineDialogTitle: { fontSize: 27, lineHeight: 33, marginTop: 0, textAlign: "left" },
-  offlineDialogMessage: { fontSize: 17, lineHeight: 27, marginTop: 28, textAlign: "left" },
-  offlineDialogActions: { flexDirection: "column", gap: 16, marginTop: 32 },
-  offlineDialogAction: { borderRadius: 6, flex: 0, minHeight: 56 },
-  offlineDialogActionText: { fontSize: 16, letterSpacing: 0.2 },
 });
