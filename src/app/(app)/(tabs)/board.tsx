@@ -16,15 +16,19 @@ import { styles } from "@/features/planner/styles";
 import { colors, spacing } from "@/theme";
 
 type StoredPlan = {
+  summary?: string;
+  workloadRisk?: string;
   plan: {
     _id: string;
     marginMinutes: number;
     totalAvailableMinutes: number;
     totalPlannedMinutes: number;
+    summary?: string;
     unscheduledMinutes?: number;
     unscheduledTaskIds?: string[];
     weekEnd: string;
     weekStart: string;
+    workloadRisk?: string;
   };
   blocks: Array<{
     date: string;
@@ -38,8 +42,12 @@ type StoredPlan = {
 
 type BoardTask = {
   _id: string;
+  aiConfidence?: number;
   aiEstimatedMinutes?: number;
+  aiReasoning?: string;
   aiRecommendedPriority?: "low" | "medium" | "high";
+  aiSuggestedAction?: string;
+  complexityScore?: number;
   description?: string;
   dueDate?: number;
   priority?: "low" | "medium" | "high";
@@ -106,20 +114,41 @@ function restoreAiResult(planData: StoredPlan, tasks: BoardTask[]): AiRefreshRes
       };
     }),
     insights: tasks.flatMap((task) => {
-      if (!minutesByTask.has(task._id)) return [];
+      const estimatedMinutes = task.aiEstimatedMinutes ?? minutesByTask.get(task._id);
+      const priority = task.aiRecommendedPriority;
+      const complexityScore = task.complexityScore;
+      const confidence = task.aiConfidence;
+      const reasoning = task.aiReasoning;
+      const suggestedAction = task.aiSuggestedAction;
+
+      if (
+        estimatedMinutes === undefined
+        && priority === undefined
+        && complexityScore === undefined
+        && confidence === undefined
+        && reasoning === undefined
+        && suggestedAction === undefined
+      ) return [];
+
       return [{
         taskId: task._id,
-        estimatedMinutes: task.aiEstimatedMinutes,
-        priority: task.aiRecommendedPriority ?? task.priority,
+        estimatedMinutes,
+        priority,
+        complexityScore,
+        confidence,
+        reasoning,
+        suggestedAction,
       }];
     }),
     reusedTasks: 0,
+    summary: planData.summary ?? planData.plan.summary,
     totalPlannedMinutes: planData.plan.totalPlannedMinutes,
     unscheduledMinutes: planData.plan.unscheduledMinutes,
     unscheduledTaskIds: planData.plan.unscheduledTaskIds ?? [],
     warnings: planData.plan.unscheduledMinutes ? ["Hay tiempo pendiente por acomodar."] : [],
     weekEnd: planData.plan.weekEnd,
     weekStart: planData.plan.weekStart,
+    workloadRisk: planData.workloadRisk ?? planData.plan.workloadRisk,
   };
 }
 
@@ -135,6 +164,7 @@ export default function BoardScreen() {
   const [aiResult, setAiResult] = useState<AiRefreshResult | null>(null);
   const [activeView, setActiveView] = useState<BoardView>("flow");
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
+  const [expandedAiTaskIds, setExpandedAiTaskIds] = useState<string[]>([]);
   const actionableTaskIds = useMemo(() => new Set(
     (tasks ?? [])
       .filter((task) => task.status !== "completed" && !isOverdueTask(task.dueDate))
@@ -248,6 +278,9 @@ export default function BoardScreen() {
                     columnTasks.map((task) => {
                       const insight = aiResult?.insights.find((item) => item.taskId === task._id);
                       const isCritical = aiResult?.criticalTaskIds.includes(task._id);
+                      const isAiDetailExpanded = expandedAiTaskIds.includes(task._id);
+                      const aiDetailsLength = (insight?.reasoning?.length ?? 0) + (insight?.suggestedAction?.length ?? 0);
+                      const canExpandAiDetails = aiDetailsLength > 150;
 
                       return (
                       <Card key={task._id} style={styles.taskCard}>
@@ -267,8 +300,19 @@ export default function BoardScreen() {
                             {isCritical && <AppText color={colors.danger} variant="caption" style={styles.aiTaskMetaText}>Crítica</AppText>}
                             {insight?.priority && <AppText color={colors.primary} variant="caption" style={styles.aiTaskMetaText}>IA: prioridad {getAiPriorityLabel(insight.priority)}</AppText>}
                             {insight?.estimatedMinutes && <AppText color={colors.textSecondary} variant="caption" style={styles.aiTaskMetaText}>{insight.estimatedMinutes} min estimados</AppText>}
+                            {insight?.complexityScore !== undefined && <AppText color={colors.textSecondary} variant="caption" style={styles.aiTaskMetaText}>Complejidad {insight.complexityScore}/5</AppText>}
+                            {insight?.confidence !== undefined && <AppText color={colors.textSecondary} variant="caption" style={styles.aiTaskMetaText}>Confianza {Math.round(insight.confidence * 100)}%</AppText>}
                           </View>
                         )}
+                        {!!insight?.reasoning && <AppText color={colors.textSecondary} variant="bodySmall" numberOfLines={isAiDetailExpanded ? undefined : 2} style={styles.aiTaskReasoning}>Por qué: {insight.reasoning}</AppText>}
+                        {!!insight?.suggestedAction && <AppText color={colors.primary} variant="bodySmall" numberOfLines={isAiDetailExpanded ? undefined : 2} style={styles.aiTaskAction}>Siguiente paso: {insight.suggestedAction}</AppText>}
+                        {canExpandAiDetails && <Pressable
+                          accessibilityRole="button"
+                          onPress={() => setExpandedAiTaskIds((current) => isAiDetailExpanded ? current.filter((id) => id !== task._id) : [...current, task._id])}
+                          style={styles.aiTaskToggle}
+                        >
+                          <AppText color={colors.text} variant="caption" style={styles.aiTaskToggleText}>{isAiDetailExpanded ? "Ver menos" : "Ver más"}</AppText>
+                        </Pressable>}
                         <View style={styles.taskMeta}>
                           <AppText color={colors.textSecondary} variant="caption">
                             {getDueLabel(task.dueDate)}

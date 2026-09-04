@@ -18,7 +18,7 @@ export type TaskItem = {
 };
 
 export type TaskSectionData = {
-  title: "Asignadas" | "Vencidas" | "Completadas";
+  title: "Asignadas" | "En progreso" | "Vencidas" | "Completadas";
   color: string;
   textColor: string;
   emptyMessage: string;

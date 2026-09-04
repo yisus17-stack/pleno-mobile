@@ -118,6 +118,7 @@ export const updateTask = mutation({
     ),
     priority: v.optional(v.union(v.literal('low'), v.literal('medium'), v.literal('high'))),
     dueDate: v.optional(v.number()),
+    courseName: v.optional(v.string()),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
   },
@@ -141,6 +142,7 @@ export const updateTask = mutation({
     if (args.status !== undefined) updates.status = args.status;
     if (args.priority !== undefined) updates.priority = args.priority;
     if (args.dueDate !== undefined) updates.dueDate = args.dueDate;
+    if (args.courseName !== undefined) updates.courseName = args.courseName.trim() || 'General';
     if (args.title !== undefined) updates.title = args.title;
     if (args.description !== undefined) updates.description = args.description;
 

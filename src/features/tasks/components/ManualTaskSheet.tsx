@@ -110,20 +110,14 @@ export function ManualTaskSheet({
 
               <View onLayout={({ nativeEvent }) => { formFieldOffsetsRef.current.course = nativeEvent.layout.y; }}>
                 <AppText style={styles.inputLabel}>Materia o proyecto</AppText>
-                {editingTask ? (
-                  <View style={styles.readOnlyFormField}>
-                    <AppText color={colors.textSecondary}>{manualCourseName || "General"}</AppText>
-                  </View>
-                ) : (
-                  <TextInput
-                    onChangeText={setManualCourseName}
-                    onFocus={() => onFocusField("course")}
-                    placeholder="Ej. Desarrollo móvil"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.formInput}
-                    value={manualCourseName}
-                  />
-                )}
+                <TextInput
+                  onChangeText={setManualCourseName}
+                  onFocus={() => onFocusField("course")}
+                  placeholder="Ej. Desarrollo móvil"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.formInput}
+                  value={manualCourseName}
+                />
               </View>
 
               <View onLayout={({ nativeEvent }) => { formFieldOffsetsRef.current.description = nativeEvent.layout.y; }}>

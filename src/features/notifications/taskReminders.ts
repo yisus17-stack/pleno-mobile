@@ -72,7 +72,5 @@ export async function syncTaskReminder({ dueDate, taskId, title }: { dueDate?: n
     const reminderIds = await getReminderIds();
     reminderIds[taskId] = notificationId;
     await saveReminderIds(reminderIds);
-  } catch (error) {
-    console.warn("No se pudo programar el recordatorio local:", error);
-  }
+  } catch {}
 }

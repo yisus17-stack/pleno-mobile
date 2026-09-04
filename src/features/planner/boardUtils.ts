@@ -53,7 +53,10 @@ export function keepActionableAiResult(result: AiRefreshResult, actionableTaskId
 
 export function formatPlanDate(date: string) {
   const parsedDate = new Date(`${date}T12:00:00`);
-  return Number.isNaN(parsedDate.getTime()) ? date : parsedDate.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
+  const formattedDate = Number.isNaN(parsedDate.getTime())
+    ? date
+    : parsedDate.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
+  return `${formattedDate.charAt(0).toLocaleUpperCase("es-MX")}${formattedDate.slice(1)}`;
 }
 
 export function getPlanWeekDates(weekStart?: string, fallbackDates: string[] = []) {

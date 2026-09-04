@@ -39,6 +39,7 @@ export default function TasksScreen() {
   const { taskId } = useLocalSearchParams<{ taskId?: string }>();
   const [isSyncingClassroom, setIsSyncingClassroom] = useState(false);
   const [isAssignedExpanded, setIsAssignedExpanded] = useState(true);
+  const [isInProgressExpanded, setIsInProgressExpanded] = useState(true);
   const [isOverdueExpanded, setIsOverdueExpanded] = useState(true);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export default function TasksScreen() {
     setSelectedTaskId(taskId);
     setExpandedTaskId(taskId);
     setIsAssignedExpanded(true);
+    setIsInProgressExpanded(true);
     setIsOverdueExpanded(true);
     setIsCompletedExpanded(true);
   }, [allTasks, taskId]);
@@ -106,6 +108,7 @@ export default function TasksScreen() {
       : taskList;
 
   const assignedTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status === "todo" && !isTaskOverdue(task.dueDate)));
+  const inProgressTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status === "in_progress" && !isTaskOverdue(task.dueDate)));
   const overdueTasks = sortSelectedFirst(filteredTasks.filter((task) => task.status !== "completed" && isTaskOverdue(task.dueDate)));
   const taskSections: TaskSectionData[] = [
     {
@@ -114,6 +117,13 @@ export default function TasksScreen() {
       textColor: colors.text,
       emptyMessage: "No tienes tareas asignadas.",
       tasks: assignedTasks,
+    },
+    {
+      title: "En progreso",
+      color: colors.primary,
+      textColor: colors.white,
+      emptyMessage: "No tienes tareas en progreso.",
+      tasks: inProgressTasks,
     },
     {
       title: "Vencidas",
@@ -388,6 +398,7 @@ export default function TasksScreen() {
           taskId: editingTask._id as never,
           userId: user.id,
           title: manualTitle.trim(),
+          courseName: manualCourseName.trim() || "General",
           description: manualDescription.trim(),
           dueDate,
           priority: manualPriority,
@@ -685,9 +696,11 @@ export default function TasksScreen() {
         {taskSections.map((section) => {
           const isExpanded = section.title === "Asignadas"
             ? isAssignedExpanded
-            : section.title === "Vencidas"
-              ? isOverdueExpanded
-              : isCompletedExpanded;
+            : section.title === "En progreso"
+              ? isInProgressExpanded
+              : section.title === "Vencidas"
+                ? isOverdueExpanded
+                : isCompletedExpanded;
 
           return <TaskSection
             key={section.title}
@@ -696,6 +709,7 @@ export default function TasksScreen() {
             onOpenMenu={presentTaskMenu}
             onToggleExpanded={() => {
               if (section.title === "Asignadas") setIsAssignedExpanded((current) => !current);
+              if (section.title === "En progreso") setIsInProgressExpanded((current) => !current);
               if (section.title === "Vencidas") setIsOverdueExpanded((current) => !current);
               if (section.title === "Completadas") setIsCompletedExpanded((current) => !current);
             }}

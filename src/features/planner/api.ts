@@ -6,6 +6,9 @@ export type AiTaskInsight = {
   taskId: string;
   priority?: "low" | "medium" | "high";
   estimatedMinutes?: number;
+  complexityScore?: number;
+  confidence?: number;
+  reasoning?: string;
   suggestedAction?: string;
 };
 
@@ -109,6 +112,9 @@ function parseAiRefreshResponse(payload: unknown): AiRefreshResult {
       taskId,
       priority,
       estimatedMinutes: getNumber(item.estimatedMinutes),
+      complexityScore: getNumber(item.complexityScore),
+      confidence: getNumber(item.confidence),
+      reasoning: getString(item.reasoning),
       suggestedAction: getString(item.suggestedAction),
     }];
   });
@@ -160,34 +166,20 @@ export async function refreshTasksWithAi(): Promise<AiRefreshResult> {
   const { accessToken } = await GoogleSignin.getTokens();
   if (!accessToken) throw new Error("No se encontro una sesion de Google valida.");
 
-  if (__DEV__) console.log("Token temporal para Swagger:", accessToken);
-
   const response = await fetch(`${getApiUrl()}/v1/agent/tasks/refresh?force=false`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
-    body: JSON.stringify({}),
   });
   const responseText = await response.text();
   let payload: unknown;
 
   try {
     payload = responseText ? JSON.parse(responseText) : null;
+ 
   } catch {
-    if (__DEV__) {
-      console.error("Respuesta no JSON de IA:", { status: response.status, responseText });
-    }
     throw new Error("La API no devolvio JSON valido.");
-  }
-
-  if (__DEV__) {
-    console.log("Respuesta de IA:", {
-      ok: response.ok,
-      payload,
-      status: response.status,
-    });
   }
 
   if (!response.ok) {

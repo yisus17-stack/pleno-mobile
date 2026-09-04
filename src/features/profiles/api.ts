@@ -32,8 +32,6 @@ export type SaveProfileArgs = Omit<Partial<UserProfile>, "_id" | "userId"> & {
   userId: string;
 };
 
-// Estas funciones ya existen en el deployment de Convex. El código generado
-// local aún no las tipa, por eso exponemos únicamente esta pequeña interfaz.
 export const profilesApi = (api as unknown as {
   profiles: {
     getProfile: any;

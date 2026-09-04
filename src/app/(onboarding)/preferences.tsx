@@ -210,7 +210,12 @@ export default function PreferencesScreen() {
         workloadTolerance: tolerance ?? undefined, energyMorning: morningEnergy ?? undefined, energyAfternoon: afternoonEnergy ?? undefined, energyNight: nightEnergy ?? undefined,
         workMethod: workMethod.trim() || undefined, learningStyle: learningStyle.trim() || undefined, personalGoals: parseList(goals), preferredActivities: parseList(activities), distractions: parseList(distractions), declaredFieldNames: declaredFields,
       });
-      if (isEditing) router.back(); else router.replace("/classroom");
+      if (isEditing) {
+        showToast({ type: "success", title: "Planificación actualizada", message: "Guardamos tus horarios y preferencias." });
+        router.back();
+      } else {
+        router.replace("/classroom");
+      }
     } catch (error) {
       showToast({ type: "error", title: "No se pudo guardar tu perfil", message: error instanceof Error ? error.message : "Inténtalo de nuevo." });
     } finally { setIsSaving(false); }
